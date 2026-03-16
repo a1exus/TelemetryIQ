@@ -1,10 +1,10 @@
-# GT7 telemetry — Docker Compose
+# TelemetryIQ — Docker Compose
 # PlayStation and host must be on the same network; use host network so the
 # container can discover the console via UDP/broadcast.
 services:
-  gt7:
+  telemetryiq:
     build: .
-    image: gt7:latest
+    image: telemetryiq:latest
     # Use host network so gt-telem can discover the PlayStation on the LAN
     network_mode: host
     env_file:
