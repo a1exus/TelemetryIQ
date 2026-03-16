@@ -8,7 +8,9 @@ inputs, and more, streamed in real time from your PlayStation.
 - Gran Turismo 7 running on PlayStation
 - Telemetry enabled in GT7:
   **Settings → Options → Machine → BD-ROM / PS5 Activity → GT7 UDP Telemetry → On**
-- PlayStation and host machine on the same network
+- **Linux host** on the same network as the PlayStation (e.g. Raspberry Pi).
+  Docker Desktop on macOS cannot receive UDP from external devices — the
+  container runs in a VM and the PS5 can't reach it.
 - Docker + Docker Compose
 
 ## Setup

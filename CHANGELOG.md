@@ -18,6 +18,11 @@ All notable changes to this project will be documented in this file.
 - Docker Compose wires in `.env` via `env_file` (optional, won't fail if missing)
 - Renamed Docker Compose service from `gt7` to `telemetryiq`
 
+### Notes
+
+- Docker Desktop on macOS cannot receive UDP from external devices (PS5).
+  Use a Linux host (e.g. Raspberry Pi) on the same LAN.
+
 ## [Week of 2026-03-09]
 
 ### Added

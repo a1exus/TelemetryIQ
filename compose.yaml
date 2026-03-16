@@ -1,11 +1,12 @@
 # TelemetryIQ — Docker Compose
-# PlayStation and host must be on the same network; use host network so the
-# container can discover the console via UDP/broadcast.
+# Requires Linux host (e.g. Raspberry Pi). Docker Desktop on macOS does not
+# support true host networking — the container runs in a VM and cannot receive
+# UDP from external devices like the PS5. Use a Linux machine on the same LAN.
+# PlayStation and host must be on the same network.
 services:
   telemetryiq:
     build: .
     image: telemetryiq:latest
-    # Use host network so gt-telem can discover the PlayStation on the LAN
     network_mode: host
     env_file:
       - path: .env
