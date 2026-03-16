@@ -8,44 +8,34 @@ inputs, and more, streamed in real time from your PlayStation.
 - Gran Turismo 7 running on PlayStation
 - Telemetry enabled in GT7:
   **Settings → Options → Machine → BD-ROM / PS5 Activity → GT7 UDP Telemetry → On**
-- **Linux host** on the same network as the PlayStation (e.g. Raspberry Pi).
-  Docker Desktop on macOS cannot receive UDP from external devices — the
-  container runs in a VM and the PS5 can't reach it.
-- Docker + Docker Compose
+- PlayStation and your machine on the same network
 
-## Setup
+## macOS (pip via brew)
 
-1. Copy the example env file and configure it:
+Docker Desktop on macOS cannot receive UDP from external devices — use pip instead.
 
-   ```shell
-   cp .env.example .env
-   ```
-
-2. Edit `.env` — at minimum, set `PS_IP` if auto-discovery doesn't work:
-
-   ```ini
-   PS_IP=192.168.1.xxx
-   ```
-
-   See `.env.example` for all options and descriptions.
-
-## Run
-
-```bash
-docker compose up --build
+```shell
+brew install pipx
+pipx install .
+rexy
 ```
 
-To run in the background:
+For development (editable install):
 
-```bash
-docker compose up --build -d
-docker compose logs -f
+```shell
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+rexy
 ```
 
-To stop:
+## Linux / Docker (e.g. Raspberry Pi)
 
-```bash
-docker compose down
+```shell
+cp .env.example .env
+# Edit .env — set PS_IP if auto-discovery doesn't work
+make build
+make up
+make logs
 ```
 
 ## Configuration

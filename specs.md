@@ -5,9 +5,12 @@
 - **Project**: GT7 — application using Gran Turismo 7 telemetry
 - **Status**: Draft (beginning / foundation only)
 - **Last updated**: 2025-03-15
-- **Telemetry source**: [gt-telem](https://pypi.org/project/gt-telem/) (Python library for Polyphony Digital’s motion-rig telemetry in GT6/GTS/GT7)
+- **Telemetry source**: [gt-telem](https://pypi.org/project/gt-telem/)
+  (Python library for Polyphony Digital's motion-rig telemetry in GT6/GTS/GT7)
 
-**This is just the beginning.** Current scope is the foundation: connect to telemetry, run in Docker, minimal CLI. The full product (dash, recorder, motion rig, analytics, etc.) will be defined and built in later phases.
+**This is just the beginning.** Current scope is the foundation: connect to telemetry, run in
+Docker, minimal CLI. The full product (dash, recorder, motion rig, analytics, etc.) will be
+defined and built in later phases.
 
 ## Current state (foundation)
 
@@ -15,7 +18,10 @@ What exists today:
 
 - Connect to GT7 via gt-telem (`TurismoClient`), basic error handling for PS not found/standby
 - Docker Compose + Dockerfile, host network for discovery
-- Minimal `python -m gt7` entrypoint that streams speed/rpm/gear to stdout
+- `pyproject.toml` packaging with `rexy` CLI entry point;
+  installable via `pip install .` or `pipx install .`
+- `rexy` command streams speed/rpm/gear to stdout
+- Makefile for common dev/ops tasks
 - Specs, plan, and task scaffolding in `plan.md` and `tasks/`
 
 ## Goals (product direction — to be refined)
@@ -39,23 +45,25 @@ What exists today:
 
 ### Functional
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| F1 | Connect to GT7 telemetry (TurismoClient, sync/async or callbacks) | Must |
-| F2 | _Requirement_ | Should |
-| F3 | _Requirement_ | Could |
+| ID  | Requirement                                                       | Priority |
+|-----|-------------------------------------------------------------------|----------|
+| F1  | Connect to GT7 telemetry (TurismoClient, sync/async or callbacks) | Must     |
+| F2  | _Requirement_                                                     | Should   |
+| F3  | _Requirement_                                                     | Could    |
 
 ### Non-functional
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| NF1 | Python 3.10+ (gt-telem requirement) | Must |
-| NF2 | _Performance / latency / UX_ | Should |
+| ID  | Requirement                          | Priority |
+|-----|--------------------------------------|----------|
+| NF1 | Python 3.10+ (gt-telem requirement)  | Must     |
+| NF2 | _Performance / latency / UX_         | Should   |
 
 ## Constraints & assumptions
 
-- **Constraints**: gt-telem (LGPLv3), Python ≥3.10; GT7 running on PlayStation; same network for PS and PC.
-- **Assumptions**: Telemetry enabled in GT7; optional use of heartbeat types (A=default, B=motion data, ~=extended) per [gt-telem docs](https://pypi.org/project/gt-telem/).
+- **Constraints**: gt-telem (LGPLv3), Python ≥3.10; GT7 running on PlayStation;
+  same network for PS and PC.
+- **Assumptions**: Telemetry enabled in GT7; optional use of heartbeat types
+  (A=default, B=motion data, ~=extended) per [gt-telem docs](https://pypi.org/project/gt-telem/).
 
 ## Success criteria
 
