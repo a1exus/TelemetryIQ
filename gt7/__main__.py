@@ -1,4 +1,5 @@
 """Run the GT7 telemetry client (entrypoint for Docker / python -m gt7)."""
+import os
 from time import sleep
 
 from gt_telem import TurismoClient
@@ -9,8 +10,9 @@ from gt_telem.errors.playstation_errors import (
 
 
 def main() -> None:
+    ps_ip = os.environ.get("PS_IP") or None
     try:
-        tc = TurismoClient()
+        tc = TurismoClient(ps_ip=ps_ip)
     except PlayStationOnStandbyError as e:
         print("PlayStation is on standby. Turn it on.")
         raise SystemExit(1) from e

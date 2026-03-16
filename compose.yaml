@@ -7,8 +7,8 @@ services:
     image: gt7:latest
     # Use host network so gt-telem can discover the PlayStation on the LAN
     network_mode: host
-    # Optional: pass through env (e.g. for config)
-    # environment:
-    #   - GT7_HEARTBEAT_TYPE=B
+    env_file:
+      - path: .env
+        required: false
     # Restart policy (optional)
     restart: unless-stopped
