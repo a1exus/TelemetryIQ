@@ -15,9 +15,13 @@ async def test_schema_version(repo):
     assert (await cur.fetchone())[0] == 1
 
 
-async def test_wal_mode(repo):
-    cur = await repo.db.execute("PRAGMA journal_mode")
+async def test_wal_mode(tmp_path):
+    db = str(tmp_path / "wal_test.db")
+    r = TelemetryRepository(db)
+    await r.init()
+    cur = await r.db.execute("PRAGMA journal_mode")
     assert (await cur.fetchone())[0] == "wal"
+    await r.close()
 
 
 async def test_tables_exist(repo):
