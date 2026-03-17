@@ -11,6 +11,9 @@ build/
 # Env
 .env
 
+# Database (local dev)
+*.db
+
 # Editor/IDE
 .idea/
 .vscode/

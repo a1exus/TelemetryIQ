@@ -22,7 +22,7 @@ from rexy.server import app, clients, run_broadcaster
 async def _main() -> None:
     ps_ip = os.environ.get("PS_IP") or None
     heartbeat_type = os.environ.get("GT7_HEARTBEAT_TYPE", "B")
-    db_path = os.environ.get("DB_PATH", "/data/telemetry.db")
+    db_path = os.environ.get("DB_PATH", os.path.join(os.getcwd(), "telemetry.db"))
 
     # Database — must init before anything else
     repo = TelemetryRepository(db_path)
