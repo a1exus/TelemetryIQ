@@ -13,6 +13,9 @@ build/
 
 # Database (local dev)
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Editor/IDE
 .idea/

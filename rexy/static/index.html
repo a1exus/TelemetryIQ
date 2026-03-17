@@ -7,28 +7,51 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Courier New', monospace; background: #0d0d0d; color: #e0e0e0;
-         padding: 1rem; font-size: 13px; }
+         padding: 1rem; font-size: 16px; }
+
   #header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-  #status { font-size: 12px; padding: 0.25rem 0.5rem; border-radius: 3px;
+  h1 { font-size: 1rem; color: #555; letter-spacing: 0.1em; }
+  #status { font-size: 0.85rem; padding: 0.25rem 0.6rem; border-radius: 3px;
             background: #1a1a1a; border: 1px solid #333; }
-  #status.connected { border-color: #2a7; color: #2a7; }
+  #status.connected    { border-color: #2a7; color: #2a7; }
   #status.disconnected { border-color: #a33; color: #a33; }
-  h1 { font-size: 1rem; color: #888; letter-spacing: 0.1em; }
-  #dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-               gap: 0.75rem; }
-  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px;
-          padding: 0.75rem; }
-  .card h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em;
-             color: #666; margin-bottom: 0.5rem; border-bottom: 1px solid #222;
-             padding-bottom: 0.35rem; }
-  .row { display: flex; justify-content: space-between; padding: 0.12rem 0;
-         border-bottom: 1px solid #1e1e1e; }
+
+  /* ── layout ─────────────────────────────────────────────── */
+  #dashboard { display: grid;
+               grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+               gap: 1rem; }
+
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
+          padding: 1rem; }
+  .card h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em;
+             color: #555; margin-bottom: 0.75rem; border-bottom: 1px solid #222;
+             padding-bottom: 0.4rem; }
+
+  /* ── hero numbers (speed, RPM, gear, lap) ───────────────── */
+  .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
+               margin-bottom: 0.75rem; }
+  .hero { background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
+          padding: 0.6rem 0.8rem; text-align: center; }
+  .hero .lbl { font-size: 0.65rem; color: #555; text-transform: uppercase;
+               letter-spacing: 0.1em; margin-bottom: 0.2rem; }
+  .hero .big { font-size: 2.8rem; font-weight: bold; line-height: 1;
+               letter-spacing: -0.02em; }
+  .hero.wide { grid-column: span 2; }
+  .hero .big.highlight { color: #4af; }
+  .hero .big.active    { color: #4f4; }
+  .hero .big.warn      { color: #fa4; }
+  .hero .big.neutral   { color: #e0e0e0; }
+
+  /* ── regular rows ───────────────────────────────────────── */
+  .row { display: flex; justify-content: space-between; align-items: baseline;
+         padding: 0.3rem 0; border-bottom: 1px solid #1e1e1e; }
   .row:last-child { border-bottom: none; }
-  .lbl { color: #666; }
-  .val { color: #e0e0e0; font-weight: bold; text-align: right; }
+  .lbl { color: #666; font-size: 0.85rem; }
+  .val { color: #e0e0e0; font-weight: bold; font-size: 1.1rem; text-align: right; }
   .val.highlight { color: #4af; }
-  .val.warn { color: #fa4; }
-  .val.active { color: #4f4; }
+  .val.warn      { color: #fa4; }
+  .val.active    { color: #4f4; }
+
   .hidden { display: none; }
 </style>
 </head>
@@ -39,26 +62,50 @@
 </div>
 <div id="dashboard">
 
+  <!-- ── Lap ─────────────────────────────────────────────── -->
   <div class="card" id="card-lap">
     <h2>Lap</h2>
-    <div class="row"><span class="lbl">Lap / Total</span>
-      <span class="val"><span id="current_lap">--</span> / <span id="total_laps">--</span></span></div>
-    <div class="row"><span class="lbl">Last</span>
-      <span class="val highlight" id="last_lap_time">--:--.---</span></div>
-    <div class="row"><span class="lbl">Best</span>
-      <span class="val highlight" id="best_lap_time">--:--.---</span></div>
+    <div class="hero-grid">
+      <div class="hero">
+        <div class="lbl">Lap</div>
+        <div class="big neutral" id="current_lap">--</div>
+      </div>
+      <div class="hero">
+        <div class="lbl">/ Total</div>
+        <div class="big neutral" id="total_laps">--</div>
+      </div>
+      <div class="hero wide">
+        <div class="lbl">Last lap</div>
+        <div class="big highlight" id="last_lap_time">--:--.---</div>
+      </div>
+      <div class="hero wide">
+        <div class="lbl">Best lap</div>
+        <div class="big highlight" id="best_lap_time">--:--.---</div>
+      </div>
+    </div>
     <div class="row"><span class="lbl">Cars on track</span>
       <span class="val" id="cars_on_track">--</span></div>
   </div>
 
+  <!-- ── Engine ───────────────────────────────────────────── -->
   <div class="card" id="card-engine">
     <h2>Engine</h2>
-    <div class="row"><span class="lbl">Speed</span>
-      <span class="val highlight" id="speed_kph">-- km/h</span></div>
-    <div class="row"><span class="lbl">RPM</span>
-      <span class="val" id="engine_rpm">----</span></div>
-    <div class="row"><span class="lbl">Gear / Suggested</span>
-      <span class="val"><span id="current_gear">-</span> / <span id="suggested_gear">-</span></span></div>
+    <div class="hero-grid">
+      <div class="hero wide">
+        <div class="lbl">Speed</div>
+        <div class="big highlight" id="speed_kph">-- km/h</div>
+      </div>
+      <div class="hero">
+        <div class="lbl">RPM</div>
+        <div class="big neutral" id="engine_rpm">----</div>
+      </div>
+      <div class="hero">
+        <div class="lbl">Gear</div>
+        <div class="big neutral" id="current_gear">-</div>
+      </div>
+    </div>
+    <div class="row"><span class="lbl">Suggested gear</span>
+      <span class="val" id="suggested_gear">--</span></div>
     <div class="row"><span class="lbl">Throttle</span>
       <span class="val active" id="throttle_pct">--%</span></div>
     <div class="row"><span class="lbl">Brake</span>
@@ -69,42 +116,46 @@
       <span class="val" id="fuel_pct">--%</span></div>
   </div>
 
+  <!-- ── Tires ────────────────────────────────────────────── -->
   <div class="card" id="card-tires">
     <h2>Tires</h2>
-    <div class="row"><span class="lbl">Temp FL/FR</span>
+    <div class="row"><span class="lbl">Temp FL / FR</span>
       <span class="val"><span id="tire_fl_temp">--</span> / <span id="tire_fr_temp">--</span> °C</span></div>
-    <div class="row"><span class="lbl">Temp RL/RR</span>
+    <div class="row"><span class="lbl">Temp RL / RR</span>
       <span class="val"><span id="tire_rl_temp">--</span> / <span id="tire_rr_temp">--</span> °C</span></div>
-    <div class="row"><span class="lbl">Sus FL/FR (mm)</span>
+    <div class="row"><span class="lbl">Sus FL / FR (mm)</span>
       <span class="val"><span id="tire_fl_sus_height">--</span> / <span id="tire_fr_sus_height">--</span></span></div>
-    <div class="row"><span class="lbl">Sus RL/RR (mm)</span>
+    <div class="row"><span class="lbl">Sus RL / RR (mm)</span>
       <span class="val"><span id="tire_rl_sus_height">--</span> / <span id="tire_rr_sus_height">--</span></span></div>
   </div>
 
+  <!-- ── Thermal ───────────────────────────────────────────── -->
   <div class="card" id="card-thermal">
     <h2>Thermal</h2>
-    <div class="row"><span class="lbl">Oil Temp</span>
+    <div class="row"><span class="lbl">Oil temp</span>
       <span class="val" id="oil_temp">-- °C</span></div>
-    <div class="row"><span class="lbl">Oil Pressure</span>
+    <div class="row"><span class="lbl">Oil pressure</span>
       <span class="val" id="oil_pressure">--</span></div>
-    <div class="row"><span class="lbl">Water Temp</span>
+    <div class="row"><span class="lbl">Water temp</span>
       <span class="val" id="water_temp">-- °C</span></div>
   </div>
 
+  <!-- ── Motion (Heartbeat B) ─────────────────────────────── -->
   <div class="card hidden" id="card-motion">
     <h2>Motion (Heartbeat B)</h2>
     <div class="row"><span class="lbl">Steering (rad)</span>
       <span class="val" id="wheel_rotation_radians">--</span></div>
     <div class="row"><span class="lbl">Slip angle</span>
       <span class="val" id="filler_float_fb">--</span></div>
-    <div class="row"><span class="lbl">Sway (lat G)</span>
+    <div class="row"><span class="lbl">Sway (lat)</span>
       <span class="val" id="sway">--</span></div>
-    <div class="row"><span class="lbl">Heave (vert G)</span>
+    <div class="row"><span class="lbl">Heave (vert)</span>
       <span class="val" id="heave">--</span></div>
-    <div class="row"><span class="lbl">Surge (lon G)</span>
+    <div class="row"><span class="lbl">Surge (lon)</span>
       <span class="val" id="surge">--</span></div>
   </div>
 
+  <!-- ── Filtered (Heartbeat ~) ───────────────────────────── -->
   <div class="card hidden" id="card-filtered">
     <h2>Filtered (Heartbeat ~)</h2>
     <div class="row"><span class="lbl">Throttle filt</span>
@@ -115,6 +166,7 @@
       <span class="val" id="energy_recovery">--</span></div>
   </div>
 
+  <!-- ── Status ───────────────────────────────────────────── -->
   <div class="card" id="card-status">
     <h2>Status</h2>
     <div class="row"><span class="lbl">TCS</span>
@@ -131,15 +183,16 @@
       <span class="val" id="car_code">--</span></div>
   </div>
 
+  <!-- ── Position ─────────────────────────────────────────── -->
   <div class="card" id="card-position">
     <h2>Position</h2>
     <div class="row"><span class="lbl">X / Y / Z</span>
-      <span class="val" style="font-size:11px">
+      <span class="val" style="font-size:0.95rem">
         <span id="position_x">--</span>,
         <span id="position_y">--</span>,
         <span id="position_z">--</span></span></div>
-    <div class="row"><span class="lbl">Vel X/Y/Z</span>
-      <span class="val" style="font-size:11px">
+    <div class="row"><span class="lbl">Vel X / Y / Z</span>
+      <span class="val" style="font-size:0.95rem">
         <span id="velocity_x">--</span>,
         <span id="velocity_y">--</span>,
         <span id="velocity_z">--</span></span></div>
@@ -147,6 +200,7 @@
       <span class="val" id="road_plane_dist">--</span></div>
   </div>
 
+  <!-- ── Race ─────────────────────────────────────────────── -->
   <div class="card" id="card-race">
     <h2>Race</h2>
     <div class="row"><span class="lbl">Start pos / Cars</span>
@@ -163,6 +217,11 @@
   let retryDelay = 1000;
   const maxDelay = 30000;
 
+  // Lap counter reset: detect cars_on_track false→true and store an offset
+  // so the displayed lap always starts from 1 at track entry.
+  let prevCarsOnTrack = false;
+  let lapOffset = 0;
+
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/ws`);
@@ -175,12 +234,9 @@
     };
     ws.onmessage = e => { latest = JSON.parse(e.data); };
     ws.onclose = () => {
-      statusEl.textContent = `● Reconnecting (${(retryDelay/1000).toFixed(0)}s)…`;
+      statusEl.textContent = `● Reconnecting (${(retryDelay / 1000).toFixed(0)}s)…`;
       statusEl.className = 'disconnected';
-      setTimeout(() => {
-        retryDelay = Math.min(retryDelay * 2, maxDelay);
-        connect();
-      }, retryDelay);
+      setTimeout(() => { retryDelay = Math.min(retryDelay * 2, maxDelay); connect(); }, retryDelay);
     };
   }
 
@@ -190,7 +246,7 @@
     const m = Math.floor(t / 60000);
     const s = Math.floor((t % 60000) / 1000);
     const f = t % 1000;
-    return `${m}:${String(s).padStart(2,'0')}.${String(f).padStart(3,'0')}`;
+    return `${m}:${String(s).padStart(2, '0')}.${String(f).padStart(3, '0')}`;
   }
 
   function fmtBool(v) { return v ? 'YES' : 'no'; }
@@ -203,8 +259,14 @@
   function render() {
     const d = latest;
     if (d.speed_mps !== undefined) {
+      // Lap offset: reset displayed lap to 1 each time car goes on track
+      const onTrack = !!d.cars_on_track;
+      if (onTrack && !prevCarsOnTrack) lapOffset = (d.current_lap ?? 1) - 1;
+      prevCarsOnTrack = onTrack;
+      const displayLap = onTrack ? Math.max(1, (d.current_lap ?? 1) - lapOffset) : '--';
+
       // Lap
-      set('current_lap', d.current_lap);
+      set('current_lap', displayLap);
       set('total_laps', d.total_laps);
       set('last_lap_time', fmtMs(d.last_lap_time_ms));
       set('best_lap_time', fmtMs(d.best_lap_time_ms));
