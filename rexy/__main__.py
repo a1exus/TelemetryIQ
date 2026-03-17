@@ -1,38 +1,75 @@
-"""Run the GT7 telemetry client (entrypoint for Docker / python -m gt7)."""
-import os
-from time import sleep
+"""TelemetryIQ entrypoint — wires all Phase 2 components."""
+from __future__ import annotations
 
+import asyncio
+import os
+import time
+
+import uvicorn
 from gt_telem import TurismoClient
 from gt_telem.errors.playstation_errors import (
     PlayStationNotFoundError,
     PlayStationOnStandbyError,
 )
 
+from rexy.client import setup_client
+from rexy.dispatcher import run_dispatcher
+from rexy.recorder import LapRecorder
+from rexy.repository import TelemetryRepository
+from rexy.server import app, clients, run_broadcaster
 
-def main() -> None:
+
+async def _main() -> None:
     ps_ip = os.environ.get("PS_IP") or None
-    try:
-        tc = TurismoClient(ps_ip=ps_ip)
-    except PlayStationOnStandbyError as e:
-        print("PlayStation is on standby. Turn it on.")
-        raise SystemExit(1) from e
-    except PlayStationNotFoundError as e:
-        print("PlayStation not found. Ensure PC and PS are on the same network.")
-        raise SystemExit(1) from e
+    heartbeat_type = os.environ.get("GT7_HEARTBEAT_TYPE", "B")
+    db_path = os.environ.get("DB_PATH", "/data/telemetry.db")
 
-    tc.start()
+    # Database — must init before anything else
+    repo = TelemetryRepository(db_path)
+    await repo.init()
+    session_id = await repo.insert_session(started_at=time.time())
+
+    # Recorder and queues
+    recorder = LapRecorder(repo=repo, session_id=session_id)
+    raw_queue: asyncio.Queue = asyncio.Queue()
+    ws_queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+    loop = asyncio.get_running_loop()
+
+    # GT7 client — raises on PS not found / standby
     try:
-        for i in range(30):
-            sleep(1)
-            t = tc.telemetry
-            if t:
-                print(f"[{i+1}] speed={t.speed_mps:.1f} m/s  rpm={t.engine_rpm}  gear={t.gear}")
-            else:
-                print(f"[{i+1}] waiting for telemetry...")
-    except KeyboardInterrupt:
+        tc = TurismoClient(ps_ip=ps_ip, heartbeat_type=heartbeat_type)
+    except PlayStationOnStandbyError:
+        print("PlayStation is on standby. Turn it on and restart.")
+        raise SystemExit(1)
+    except PlayStationNotFoundError:
+        print("PlayStation not found. Ensure PC and PS are on the same LAN.")
+        raise SystemExit(1)
+
+    setup_client(tc, raw_queue, recorder, loop, heartbeat_type)
+    tc.start()
+
+    # Async tasks
+    dispatcher_task = asyncio.create_task(run_dispatcher(raw_queue, ws_queue, recorder))
+    broadcaster_task = asyncio.create_task(run_broadcaster(ws_queue, clients))
+
+    config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+
+    try:
+        await server.serve()
+    except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
         tc.stop()
+        dispatcher_task.cancel()
+        broadcaster_task.cancel()
+        await asyncio.gather(dispatcher_task, broadcaster_task, return_exceptions=True)
+        await recorder.close()
+        await repo.close()
+
+
+def main() -> None:
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":
