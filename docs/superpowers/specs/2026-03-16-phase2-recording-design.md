@@ -70,6 +70,10 @@ TurismoClient (gt-telem)
                       ← lap_time_ms derived inside flush_and_new_lap from
                         buf[-1]["last_lap_time_ms"] (always present; int from t.last_lap_time_ms)
                 registered via: race_events.on_lap_change.append(on_lap_change_handler)
+            on_track_detected_handler (sync; receives track_id: int)
+                → loop.call_soon_threadsafe(recorder.set_track_id, track_id)
+                    ← set_track_id is sync; no task needed
+                registered via: race_events.on_track_detected.append(on_track_detected_handler)
 
 dispatcher task (no I/O; only awaits raw_queue.get())
     └── for each frame:
@@ -98,13 +102,14 @@ def _run_async_callback(self, callback, telemetry_value, args):
 ```
 
 Phase 2 uses **sync callbacks only** for `on_frame_handler` and all lifecycle handlers
-(`on_at_track_handler`, `on_race_end_handler`, `on_lap_change_handler`). Sync callbacks
-are called directly from the gt-telem callback thread without a new event loop.
+(`on_at_track_handler`, `on_race_end_handler`, `on_lap_change_handler`, `on_track_detected_handler`).
+Sync callbacks are called directly from the gt-telem callback thread without a new event loop.
 
 All communication back to the app event loop goes through `call_soon_threadsafe`:
 
 - Frame data: `loop.call_soon_threadsafe(raw_queue.put_nowait, frame)`
 - Lifecycle tasks: `loop.call_soon_threadsafe(lambda: asyncio.create_task(coro))`
+- Sync state updates: `loop.call_soon_threadsafe(recorder.set_track_id, track_id)`
 
 `client.py` captures the running event loop at startup (`loop = asyncio.get_running_loop()`)
 and closes over it in all callback closures.
@@ -126,6 +131,7 @@ game_events.on_in_race.append(on_in_race_handler)
 game_events.on_race_end.append(on_race_end_handler)
 game_events.on_in_game_menu.append(on_race_end_handler)  # menu exit = close recording
 race_events.on_lap_change.append(on_lap_change_handler)
+race_events.on_track_detected.append(on_track_detected_handler)
 tc.register_callback(on_frame_handler)  # raw frames; separate from GameEvents/RaceEvents
 ```
 
@@ -227,7 +233,8 @@ the buffer **before** the first `await`. This is the critical invariant:
 # CORRECT — buffer cleared before I/O
 buf = self.lap_buffer
 car = buf[0]["car_code"] if buf else None
-lap_time_ms = buf[-1]["last_lap_time_ms"] if buf else None
+raw = buf[-1]["last_lap_time_ms"] if buf else None
+lap_time_ms = None if (raw is None or raw == -1) else raw   # GT7 uses -1 as "no time"
 old_id = self.current_lap_id
 self.lap_buffer = []   # ← BEFORE any await
 self.seq = 0
@@ -244,22 +251,31 @@ Because `on_frame()` is synchronous and the event loop is cooperative, appending
 `lap_buffer` can only happen between `await` points. Clearing the buffer before the
 first `await` means all subsequent `on_frame()` calls build the new buffer independently.
 
+**GT7 `-1` sentinel**: `last_lap_time_ms` and `best_lap_time_ms` are `-1` when no valid
+lap time exists yet. Always store `NULL` in the DB when the raw value is `-1`.
+
 ### LapRecorder state machine
+
+`LapRecorder` is constructed with `repo` and `session_id` (created by `__main__.py` at
+startup). It holds `self.current_track_id: Optional[int] = None`, updated by `set_track_id`.
 
 All lifecycle methods are `async def`. The buffer-capture pattern above applies to
 every method that reads `lap_buffer` and then awaits.
 
 ```text
 State: IDLE (initial)
+    set_track_id(track_id)       ← sync; updates self.current_track_id
     async reset_and_new_lap(n)
-                 → self.current_lap_id = await repo.insert_lap(n, started_at=time.time())
-                   ← lastrowid
+                 → self.current_lap_id = await repo.insert_lap(
+                       n, self.session_id, self.current_track_id, started_at=time.time()
+                   )  ← lastrowid
                    self.lap_buffer = []; self.seq = 0; state = RECORDING
     on_frame()   → no-op (sync)
     flush_and_new_lap() → no-op
     close()      → no-op
 
 State: RECORDING
+    set_track_id(track_id)       ← sync; updates self.current_track_id for the next lap insert
     async reset_and_new_lap(n)   ← race restart path
                  → buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
                    old_id = self.current_lap_id
@@ -268,18 +284,23 @@ State: RECORDING
                        await repo.insert_frames(old_id, buf)
                        await repo.complete_lap(old_id, lap_time_ms=None,
                            completed_at=time.time(), is_complete=0, car_code=car)
-                   self.current_lap_id = await repo.insert_lap(n, started_at=time.time())
+                   self.current_lap_id = await repo.insert_lap(
+                       n, self.session_id, self.current_track_id, started_at=time.time()
+                   )
                    state = RECORDING
     on_frame(frame)
                  → self.lap_buffer.append(frame); self.seq += 1  ← sync; no await
     async flush_and_new_lap(n)   ← no-op if state == IDLE
                  → buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
-                   lap_time_ms = buf[-1]["last_lap_time_ms"] if buf else None
+                   raw = buf[-1]["last_lap_time_ms"] if buf else None
+                   lap_time_ms = None if (raw is None or raw == -1) else raw
                    old_id = self.current_lap_id
                    self.lap_buffer = []; self.seq = 0   ← BEFORE any await
                    await repo.insert_frames(old_id, buf)
                    await repo.complete_lap(old_id, lap_time_ms, ..., is_complete=1, car_code=car)
-                   self.current_lap_id = await repo.insert_lap(n, ...) ← lastrowid
+                   self.current_lap_id = await repo.insert_lap(
+                       n, self.session_id, self.current_track_id, started_at=time.time()
+                   ) ← lastrowid
     async close()
                  → buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
                    old_id = self.current_lap_id
@@ -326,7 +347,7 @@ The state machine handles this safely:
 - If `flush_and_new_lap` runs first and clears the buffer before its first `await`:
   `close()` sees an empty buffer and does nothing. `flush_and_new_lap` completes the
   old lap (is_complete=1) and inserts a new orphaned lap row (is_complete=0, no frames).
-  Acceptable: the orphaned row is cleaned up by the Phase 3 lap selector.
+  Acceptable: the orphaned row is filtered by `is_complete=0` in Phase 3.
 
 All lifecycle coroutines run on the main event loop and cannot preempt each other —
 they interleave only at `await` points.
@@ -379,11 +400,11 @@ async def ws_endpoint(websocket: WebSocket):
 | --- | --- |
 | `rexy/client.py` | TurismoClient wrapper; creates `GameEvents`/`RaceEvents`; sync callbacks; `call_soon_threadsafe` for all queue/lifecycle ops; `telemetry_to_dict` serializer; injects `ts` + `heartbeat_type` |
 | `rexy/dispatcher.py` | Drains `raw_queue`; drop-oldest to `ws_queue`; calls `LapRecorder.on_frame()` |
-| `rexy/recorder.py` | `LapRecorder`: IDLE/RECORDING state machine; all lifecycle `async def`; buffer-before-await pattern |
-| `rexy/repository.py` | `TelemetryRepository`: aiosqlite CRUD; `insert_lap` returns `lastrowid`; schema init; version check |
+| `rexy/recorder.py` | `LapRecorder`: IDLE/RECORDING state machine; `set_track_id` sync; all lifecycle `async def`; buffer-before-await pattern |
+| `rexy/repository.py` | `TelemetryRepository`: persistent aiosqlite connection; CRUD; `insert_session`, `insert_lap` return `lastrowid`; schema init; version check |
 | `rexy/server.py` | FastAPI; `/ws` broadcaster; `clients` set; static files |
 | `rexy/static/index.html` | Vanilla JS; all telemetry fields; rAF render loop; WS reconnect |
-| `rexy/__main__.py` | Wires components; task lifecycle; shutdown sequence |
+| `rexy/__main__.py` | Wires components; creates session row at startup; task lifecycle; shutdown sequence |
 
 ---
 
@@ -395,12 +416,19 @@ so `PRAGMA user_version` is executed as a separate statement after table creatio
 ```sql
 -- Applied as separate statements in TelemetryRepository.init()
 
+CREATE TABLE IF NOT EXISTS sessions (
+    id         INTEGER PRIMARY KEY,
+    started_at REAL NOT NULL        -- time.time() when __main__.py starts
+);
+
 CREATE TABLE IF NOT EXISTS laps (
     id           INTEGER PRIMARY KEY,
+    session_id   INTEGER NOT NULL REFERENCES sessions(id),
     lap_number   INTEGER NOT NULL,
+    track_id     INTEGER,            -- from on_track_detected; NULL until first detection
     started_at   REAL    NOT NULL,   -- time.time() when insert_lap() is called
     completed_at REAL,               -- time.time() when complete_lap() is called; NULL if partial
-    lap_time_ms  INTEGER,            -- buf[-1]["last_lap_time_ms"]; NULL for partial laps
+    lap_time_ms  INTEGER,            -- buf[-1]["last_lap_time_ms"]; NULL if partial or -1 sentinel
     car_code     INTEGER,            -- buf[0]["car_code"] captured before flush; NULL if buf empty
     is_complete  INTEGER DEFAULT 0   -- set to 1 by complete_lap() on successful flush
 );
@@ -426,7 +454,7 @@ CREATE TABLE IF NOT EXISTS frames (
     tire_rl_radius REAL, tire_rr_radius REAL,
     wheel_fl_rps REAL, wheel_fr_rps REAL, wheel_rl_rps REAL, wheel_rr_rps REAL,
     current_lap INTEGER, total_laps INTEGER,
-    best_lap_time_ms INTEGER, last_lap_time_ms INTEGER,
+    best_lap_time_ms INTEGER, last_lap_time_ms INTEGER,  -- raw; -1 means no valid time
     time_of_day_ms INTEGER,          -- in-game time of day
     race_start_pos INTEGER,          -- starting grid position
     total_cars INTEGER,              -- cars in race
@@ -458,7 +486,12 @@ CREATE TABLE IF NOT EXISTS frames (
     PRIMARY KEY (lap_id, seq)
 );
 
+-- Phase 2: filter complete laps
 CREATE INDEX IF NOT EXISTS idx_laps_is_complete ON laps(is_complete);
+
+-- Phase 3: "best laps on this track" — the core comparison query
+CREATE INDEX IF NOT EXISTS idx_laps_complete_track
+    ON laps(is_complete, track_id, lap_time_ms);
 
 PRAGMA user_version = 1;   -- set after CREATE TABLE statements
 ```
@@ -484,20 +517,30 @@ G-force computation (numerical differentiation × 1/g).
 
 ## Database initialization
 
-`TelemetryRepository.init()` is awaited from `__main__.py` before any other component
-starts. Each DDL statement is executed individually via `await db.execute()`:
+`TelemetryRepository` holds a **persistent** aiosqlite connection opened in `init()` and
+closed in `close()`. Using `async with aiosqlite.connect()` (context manager) would close
+the connection after `init()` returns, leaving no connection for subsequent queries.
 
 ```python
-async def init(self):
-    async with aiosqlite.connect(self.db_path) as db:
-        row = await db.execute("PRAGMA user_version")
+class TelemetryRepository:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self.db = None  # set in init()
+
+    async def init(self) -> None:
+        self.db = await aiosqlite.connect(self.db_path)
+        await self.db.execute("PRAGMA journal_mode=WAL")
+        # WAL: enables concurrent reads during writes; no reader/writer lock contention
+        row = await self.db.execute("PRAGMA user_version")
         version = (await row.fetchone())[0]
         if version == 0:
-            await db.execute("CREATE TABLE IF NOT EXISTS laps (...)")
-            await db.execute("CREATE TABLE IF NOT EXISTS frames (...)")
-            await db.execute("CREATE INDEX IF NOT EXISTS ...")
-            await db.commit()                            # commit DDL first
-            await db.execute("PRAGMA user_version = 1") # set version AFTER commit
+            await self.db.execute("CREATE TABLE IF NOT EXISTS sessions (...)")
+            await self.db.execute("CREATE TABLE IF NOT EXISTS laps (...)")
+            await self.db.execute("CREATE TABLE IF NOT EXISTS frames (...)")
+            await self.db.execute("CREATE INDEX IF NOT EXISTS idx_laps_is_complete ...")
+            await self.db.execute("CREATE INDEX IF NOT EXISTS idx_laps_complete_track ...")
+            await self.db.commit()                            # commit DDL first
+            await self.db.execute("PRAGMA user_version = 1") # set version AFTER commit
             # PRAGMA user_version is non-transactional — setting it before commit
             # would leave version=1 even if commit fails, causing silent skip on
             # next startup with missing tables.
@@ -505,6 +548,32 @@ async def init(self):
             pass  # schema already at current version
         else:
             raise RuntimeError(f"unsupported schema version: {version}")
+
+    async def insert_session(self, started_at: float) -> int:
+        cur = await self.db.execute(
+            "INSERT INTO sessions (started_at) VALUES (?)", (started_at,)
+        )
+        await self.db.commit()
+        return cur.lastrowid
+
+    async def insert_frames(self, lap_id: int, frames: list) -> None:
+        # Single transaction for all frames; ~5400 rows/lap at 60Hz
+        rows = [(lap_id, f["seq"], f["ts"], ...) for f in frames]
+        await self.db.executemany("INSERT INTO frames VALUES (?, ?, ?, ...)", rows)
+        await self.db.commit()   # ← explicit commit required; aiosqlite does not auto-commit
+
+    async def close(self) -> None:
+        if self.db:
+            await self.db.close()
+```
+
+`__main__.py` startup sequence:
+
+```python
+repo = TelemetryRepository(db_path)
+await repo.init()
+session_id = await repo.insert_session(started_at=time.time())
+recorder = LapRecorder(repo, session_id)
 ```
 
 ---
@@ -538,7 +607,8 @@ services:
 ## WebSocket message format
 
 Flat JSON containing all fields from `telemetry_to_dict` plus `ts` and `heartbeat_type`.
-Field names match the schema columns exactly:
+Field names match the schema columns exactly. Lap time fields use raw ms integers; `-1`
+means no valid time yet (GT7 sentinel) — frontend should display `--:--.---`:
 
 ```json
 {
@@ -558,6 +628,8 @@ Field names match the schema columns exactly:
   "in_gear": true,
   "rev_limit": false,
   "hand_brake_active": false,
+  "best_lap_time_ms": -1,
+  "last_lap_time_ms": -1,
   "car_code": 12345,
   "position_x": 120.4, "position_y": 0.3, "position_z": -45.1,
   "velocity_x": 0.12, "velocity_y": -0.01, "velocity_z": 55.3,
@@ -610,7 +682,8 @@ requestAnimationFrame(render);
 | Race | `race_start_pos`, `total_cars`, `time_of_day_ms`, `car_code` | Always |
 
 Frontend conversions: `speed_mps * 3.6` → km/h; `throttle / 255 * 100` → %;
-lap times (`*_ms`) → `m:ss.mmm`; `sway/heave/surge` displayed as-is (motion-rig units).
+lap times: `ms == -1` → `--:--.---`, otherwise → `m:ss.mmm`;
+`sway/heave/surge` displayed as-is (motion-rig units).
 
 ---
 
@@ -627,6 +700,8 @@ lap times (`*_ms`) → `m:ss.mmm`; `sway/heave/surge` displayed as-is (motion-ri
 | `on_lap_change` fires before recording started | `flush_and_new_lap()` no-op in IDLE state |
 | In-flight lifecycle task races with shutdown `close()` | State machine guarantees safety: `close()` and `flush_and_new_lap()` interleave at await points but never double-write; see Shutdown sequence section |
 | `GameEvents`/`RaceEvents` duplicate instance | Class-level list appended twice; create exactly one instance per session |
+| `on_track_detected` fires after first lap starts | `current_track_id` is None for that lap row; NULL in `laps.track_id`; subsequent laps populated correctly |
+| `-1` lap time stored to DB | Guarded in `flush_and_new_lap`: `None if raw == -1 else raw` |
 
 ---
 
