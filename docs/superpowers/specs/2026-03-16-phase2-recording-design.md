@@ -31,35 +31,45 @@ frames. Growth above a few frames indicates a scheduler stall.
 ### Data flow
 
 ```text
-TurismoClient (gt-telem, async callbacks on asyncio event loop)
+TurismoClient (gt-telem)
     │
-    ├── on_telemetry_frame (~60Hz)
-    │       └── raw_queue.put_nowait(frame)
-    │           ← frame dict includes "heartbeat_type" and "ts" injected by client.py
+    ├── on_frame_handler (sync; runs in gt-telem callback thread)
+    │       → frame = telemetry_to_dict(t)   ← custom flat serializer; no as_dict
+    │       → frame["ts"] = time.time()
+    │       → frame["heartbeat_type"] = env GT7_HEARTBEAT_TYPE
+    │       → loop.call_soon_threadsafe(raw_queue.put_nowait, frame)
+    │           registered via: tc.register_callback(on_frame_handler)
     │
-    ├── on_at_track
-    │       └── await LapRecorder.reset_and_new_lap(lap_number=1)
+    ├── GameEvents(tc)  → registers its own _state_tracker with tc internally
+    │       on_at_track_handler (sync; no args)  ← fires in TT/practice (cars_on_track=False)
+    │           → loop.call_soon_threadsafe(
+    │                 lambda: asyncio.create_task(recorder.reset_and_new_lap(1))
+    │             )
+    │       on_in_race_handler (sync; no args)   ← fires in races (cars_on_track=True, current_lap=0)
+    │           → loop.call_soon_threadsafe(
+    │                 lambda: asyncio.create_task(recorder.reset_and_new_lap(0))
+    │             )
+    │               ← lap_number=0 matches current_lap at race start; on_lap_change(1) flushes it
+    │               ← on_at_track and on_in_race are mutually exclusive in normal operation
+    │       on_race_end_handler (sync; no args)
+    │           → loop.call_soon_threadsafe(
+    │                 lambda: asyncio.create_task(recorder.close())
+    │             )
+    │           registered via: game_events.on_at_track.append(on_at_track_handler)
+    │                           game_events.on_in_race.append(on_in_race_handler)
+    │                           game_events.on_race_end.append(on_race_end_handler)
+    │                           game_events.on_in_game_menu.append(on_race_end_handler)
     │
-    ├── on_race_end / on_in_game_menu
-    │       └── await LapRecorder.close()
-    │
-    ├── on_lap_change
-    │       └── await LapRecorder.flush_and_new_lap(new_lap_number, lap_time_ms)
-    │               # capture before any await:
-    │               buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
-    │               old_id = self.current_lap_id
-    │               # clear buffer BEFORE first await:
-    │               self.lap_buffer = []; self.seq = 0
-    │               # then do I/O:
-    │               1. await repo.insert_frames(old_id, buf) — executemany, 1 tx
-    │               2. await repo.complete_lap(old_id, lap_time_ms,
-    │                     completed_at=time.time(), is_complete=1, car_code=car)
-    │               3. self.current_lap_id = await repo.insert_lap(
-    │                     new_lap_number, started_at=time.time())
-    │                  ← insert_lap() returns lastrowid
-    │
-    └── on shutdown (SIGTERM → __main__.py finally block)
-            └── await LapRecorder.close()
+    └── RaceEvents(tc)  → registers its own _state_tracker with tc internally
+            on_lap_change_handler (sync; receives new_lap_number: int)
+                → loop.call_soon_threadsafe(
+                      lambda n=new_lap_number: asyncio.create_task(
+                          recorder.flush_and_new_lap(n)
+                      )
+                  )
+                      ← lap_time_ms derived inside flush_and_new_lap from
+                        buf[-1]["last_lap_time_ms"] (always present; int from t.last_lap_time_ms)
+                registered via: race_events.on_lap_change.append(on_lap_change_handler)
 
 dispatcher task (no I/O; only awaits raw_queue.get())
     └── for each frame:
@@ -73,6 +83,141 @@ FastAPI
     └── WS  /ws   → broadcaster task fans out ws_queue frames to connected clients
 ```
 
+### gt-telem callback threading model (verified from source)
+
+**Critical**: gt-telem runs async callbacks via `asyncio.new_event_loop()` per call in
+a thread pool — NOT on the application's event loop:
+
+```python
+# turismo_client.py
+def _run_async_callback(self, callback, telemetry_value, args):
+    loop = asyncio.new_event_loop()   # ← new loop per invocation, NOT the app loop
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(callback(telemetry_value))
+    loop.close()
+```
+
+Phase 2 uses **sync callbacks only** for `on_frame_handler` and all lifecycle handlers
+(`on_at_track_handler`, `on_race_end_handler`, `on_lap_change_handler`). Sync callbacks
+are called directly from the gt-telem callback thread without a new event loop.
+
+All communication back to the app event loop goes through `call_soon_threadsafe`:
+
+- Frame data: `loop.call_soon_threadsafe(raw_queue.put_nowait, frame)`
+- Lifecycle tasks: `loop.call_soon_threadsafe(lambda: asyncio.create_task(coro))`
+
+`client.py` captures the running event loop at startup (`loop = asyncio.get_running_loop()`)
+and closes over it in all callback closures.
+
+**`GameEvents` and `RaceEvents` API (verified from source)**:
+
+Both classes take `TurismoClient` as their constructor argument and self-register
+their own async `_state_tracker` callback with `TurismoClient.register_callback()`.
+User code appends callables to the class-level lists (`on_at_track`, `on_lap_change`, etc.),
+which `_state_tracker` invokes on each relevant frame:
+
+```python
+tc = TurismoClient(ps_ip, heartbeat_type=heartbeat_type)
+game_events = GameEvents(tc)   # internally calls tc.register_callback(GameEvents._state_tracker, ...)
+race_events = RaceEvents(tc)   # internally calls tc.register_callback(RaceEvents._state_tracker, ...)
+
+game_events.on_at_track.append(on_at_track_handler)
+game_events.on_in_race.append(on_in_race_handler)
+game_events.on_race_end.append(on_race_end_handler)
+game_events.on_in_game_menu.append(on_race_end_handler)  # menu exit = close recording
+race_events.on_lap_change.append(on_lap_change_handler)
+tc.register_callback(on_frame_handler)  # raw frames; separate from GameEvents/RaceEvents
+```
+
+**Class-level list bug (verified from source)**:
+
+`on_at_track`, `on_lap_change`, and all other event lists are declared as class attributes
+on `GameEvents` and `RaceEvents`. This means all instances share the same list. Always
+create exactly one `GameEvents` instance and one `RaceEvents` instance per session to
+avoid duplicate callback registrations.
+
+**`on_lap_change` callback signature (verified from source)**:
+
+```python
+# race_events.py
+await invoke_callbacks(self.on_lap_change, t.current_lap)
+```
+
+Only `new_lap_number: int` is passed. `lap_time_ms` is NOT available from the event;
+it is derived inside `flush_and_new_lap` from `buf[-1]["last_lap_time_ms"]`. This is
+reliable: `last_lap_time_ms` is a raw int field present on every telemetry frame and
+remains set to the most recently completed lap's time throughout the new lap.
+
+**`telemetry_to_dict` — custom flat serializer (replaces `as_dict`)**:
+
+`Telemetry.as_dict` is a `@property` (not a method call) that returns nested objects
+(`Vector3D`, `WheelMetric`) and strips flat per-axis and per-corner fields. It is
+unsuitable for JSON serialization or SQLite storage.
+
+`client.py` implements `telemetry_to_dict(t: Telemetry) -> dict` that reads all flat
+attributes directly from the `Telemetry` dataclass and adds explicitly decoded fields:
+
+```python
+def telemetry_to_dict(t: Telemetry) -> dict:
+    return {
+        "packet_id": t.packet_id,
+        "speed_mps": t.speed_mps, "engine_rpm": t.engine_rpm,
+        "current_gear": t.bits & 0b1111,  # decoded from bits
+        "suggested_gear": t.bits >> 4,    # decoded from bits
+        "throttle": t.throttle, "brake": t.brake,
+        "clutch_pedal": t.clutch_pedal, "clutch_engagement": t.clutch_engagement,
+        "boost_pressure": t.boost_pressure,
+        "fuel_level": t.fuel_level, "fuel_capacity": t.fuel_capacity,
+        "oil_pressure": t.oil_pressure, "oil_temp": t.oil_temp, "water_temp": t.water_temp,
+        "tire_fl_temp": t.tire_fl_temp, "tire_fr_temp": t.tire_fr_temp,
+        "tire_rl_temp": t.tire_rl_temp, "tire_rr_temp": t.tire_rr_temp,
+        "tire_fl_sus_height": t.tire_fl_sus_height, "tire_fr_sus_height": t.tire_fr_sus_height,
+        "tire_rl_sus_height": t.tire_rl_sus_height, "tire_rr_sus_height": t.tire_rr_sus_height,
+        "tire_fl_radius": t.tire_fl_radius, "tire_fr_radius": t.tire_fr_radius,
+        "tire_rl_radius": t.tire_rl_radius, "tire_rr_radius": t.tire_rr_radius,
+        "wheel_fl_rps": t.wheel_fl_rps, "wheel_fr_rps": t.wheel_fr_rps,
+        "wheel_rl_rps": t.wheel_rl_rps, "wheel_rr_rps": t.wheel_rr_rps,
+        "current_lap": t.current_lap, "total_laps": t.total_laps,
+        "best_lap_time_ms": t.best_lap_time_ms, "last_lap_time_ms": t.last_lap_time_ms,
+        "time_of_day_ms": t.time_of_day_ms, "race_start_pos": t.race_start_pos,
+        "total_cars": t.total_cars,
+        "position_x": t.position_x, "position_y": t.position_y, "position_z": t.position_z,
+        "velocity_x": t.velocity_x, "velocity_y": t.velocity_y, "velocity_z": t.velocity_z,
+        "ang_vel_x": t.ang_vel_x, "ang_vel_y": t.ang_vel_y, "ang_vel_z": t.ang_vel_z,
+        "rotation_x": t.rotation_x, "rotation_y": t.rotation_y, "rotation_z": t.rotation_z,
+        "road_plane_x": t.road_plane_x, "road_plane_y": t.road_plane_y,
+        "road_plane_z": t.road_plane_z, "road_plane_dist": t.road_plane_dist,
+        "body_height": t.body_height, "orientation": t.orientation,
+        "min_alert_rpm": t.min_alert_rpm, "max_alert_rpm": t.max_alert_rpm,
+        "calc_max_speed": t.calc_max_speed,
+        "trans_rpm": t.trans_rpm, "trans_top_speed": t.trans_top_speed,
+        "gear1": t.gear1, "gear2": t.gear2, "gear3": t.gear3, "gear4": t.gear4,
+        "gear5": t.gear5, "gear6": t.gear6, "gear7": t.gear7, "gear8": t.gear8,
+        "car_code": t.car_code,
+        # Decoded flags (from t.flags via Telemetry properties)
+        "tcs_active": bool(t.flags & (1 << 11)),
+        "asm_active": bool(t.flags & (1 << 10)),
+        "cars_on_track": bool(t.flags & (1 << 0)),
+        "is_paused": bool(t.flags & (1 << 1)),
+        "in_gear": bool(t.flags & (1 << 3)),
+        "rev_limit": bool(t.flags & (1 << 5)),
+        "hand_brake_active": bool(t.flags & (1 << 6)),
+        # Heartbeat B only — None for A and ~
+        "wheel_rotation_radians": getattr(t, "wheel_rotation_radians", None),
+        "filler_float_fb": getattr(t, "filler_float_fb", None),
+        "sway": getattr(t, "sway", None),
+        "heave": getattr(t, "heave", None),
+        "surge": getattr(t, "surge", None),
+        # Heartbeat ~ only — None for A and B
+        "throttle_filtered": getattr(t, "throttle_filtered", None),
+        "brake_filtered": getattr(t, "brake_filtered", None),
+        "energy_recovery": getattr(t, "energy_recovery", None),
+    }
+```
+
+Fields excluded: `iv` (encryption IV), `empty`, `unused1`–`unused8`, `unk_tilde_1/2/3`
+(unknowns), `time` (Python `datetime` added in `__post_init__`, not GT7 data).
+
 ### Buffer safety — clear before await
 
 `flush_and_new_lap` and similar methods must capture `lap_buffer` contents and clear
@@ -82,6 +227,7 @@ the buffer **before** the first `await`. This is the critical invariant:
 # CORRECT — buffer cleared before I/O
 buf = self.lap_buffer
 car = buf[0]["car_code"] if buf else None
+lap_time_ms = buf[-1]["last_lap_time_ms"] if buf else None
 old_id = self.current_lap_id
 self.lap_buffer = []   # ← BEFORE any await
 self.seq = 0
@@ -126,11 +272,14 @@ State: RECORDING
                    state = RECORDING
     on_frame(frame)
                  → self.lap_buffer.append(frame); self.seq += 1  ← sync; no await
-    async flush_and_new_lap(n, ms)
-                 → buf/car/old_id captured; buffer cleared BEFORE first await (see above)
-                   await insert_frames(old_id, buf)
-                   await complete_lap(old_id, ms, ..., is_complete=1, car_code=car)
-                   self.current_lap_id = await insert_lap(n, ...) ← lastrowid
+    async flush_and_new_lap(n)   ← no-op if state == IDLE
+                 → buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
+                   lap_time_ms = buf[-1]["last_lap_time_ms"] if buf else None
+                   old_id = self.current_lap_id
+                   self.lap_buffer = []; self.seq = 0   ← BEFORE any await
+                   await repo.insert_frames(old_id, buf)
+                   await repo.complete_lap(old_id, lap_time_ms, ..., is_complete=1, car_code=car)
+                   self.current_lap_id = await repo.insert_lap(n, ...) ← lastrowid
     async close()
                  → buf = self.lap_buffer; car = buf[0]["car_code"] if buf else None
                    old_id = self.current_lap_id
@@ -167,54 +316,20 @@ async def main():
 The `broadcaster` and `dispatcher` loops use `while True` with `await` — they
 handle `asyncio.CancelledError` cleanly when cancelled.
 
-### Lifecycle method wiring in client.py
+**Shutdown ordering with in-flight lifecycle tasks**: lifecycle tasks (`flush_and_new_lap`,
+`reset_and_new_lap`) may be pending on the event loop when `recorder.close()` is called.
+The state machine handles this safely:
 
-`client.py` registers gt-telem callbacks as `async def` and calls `LapRecorder`
-lifecycle methods directly:
+- If `close()` runs before `flush_and_new_lap`: `close()` captures the buffer, writes
+  the partial lap (is_complete=0), sets state=IDLE. When `flush_and_new_lap` runs, it
+  sees IDLE state and is a no-op. No data is written twice.
+- If `flush_and_new_lap` runs first and clears the buffer before its first `await`:
+  `close()` sees an empty buffer and does nothing. `flush_and_new_lap` completes the
+  old lap (is_complete=1) and inserts a new orphaned lap row (is_complete=0, no frames).
+  Acceptable: the orphaned row is cleaned up by the Phase 3 lap selector.
 
-```python
-async def on_at_track():
-    await recorder.reset_and_new_lap(lap_number=1)
-
-async def on_lap_change(lap_number, lap_time_ms):
-    await recorder.flush_and_new_lap(lap_number, lap_time_ms)
-
-async def on_race_end():
-    await recorder.close()
-```
-
-The dispatcher task only calls `LapRecorder.on_frame()` (sync). It never calls
-lifecycle methods.
-
-### gt-telem callback API and threading
-
-Phase 2 uses async callbacks exclusively. Prerequisites to verify before implementation:
-
-1. Exact callback registration API for the installed gt-telem version
-   (Phase 1 used `tc.telemetry` polling — callbacks are a different code path).
-2. Async callbacks are scheduled on the running event loop, not via `asyncio.run()`
-   in a thread. If they run in a thread, `await` inside callbacks raises `RuntimeError`.
-   In that case, use `asyncio.run_coroutine_threadsafe(coro, loop)` for all lifecycle
-   calls, and add a threading lock around `lap_buffer` access.
-
-| Callback | Category | Trigger |
-| --- | --- | --- |
-| `on_telemetry_frame` | Telemetry | Every ~60Hz frame |
-| `on_at_track` | GameEvents | Car loaded at track |
-| `on_race_end` | GameEvents | Race ends |
-| `on_in_game_menu` | GameEvents | Paused to menu |
-| `on_lap_change` | RaceEvents | Lap counter increments |
-
-### `heartbeat_type` injection
-
-`client.py` injects two fields into every frame dict before queuing:
-
-```python
-frame["heartbeat_type"] = os.environ.get("GT7_HEARTBEAT_TYPE", "B")
-frame["ts"] = time.time()
-```
-
-No other component reads `GT7_HEARTBEAT_TYPE`.
+All lifecycle coroutines run on the main event loop and cannot preempt each other —
+they interleave only at `await` points.
 
 ### WebSocket broadcaster
 
@@ -262,7 +377,7 @@ async def ws_endpoint(websocket: WebSocket):
 
 | File | Responsibility |
 | --- | --- |
-| `rexy/client.py` | TurismoClient wrapper; async callbacks; injects `ts` + `heartbeat_type`; pushes to `raw_queue`; calls LapRecorder lifecycle |
+| `rexy/client.py` | TurismoClient wrapper; creates `GameEvents`/`RaceEvents`; sync callbacks; `call_soon_threadsafe` for all queue/lifecycle ops; `telemetry_to_dict` serializer; injects `ts` + `heartbeat_type` |
 | `rexy/dispatcher.py` | Drains `raw_queue`; drop-oldest to `ws_queue`; calls `LapRecorder.on_frame()` |
 | `rexy/recorder.py` | `LapRecorder`: IDLE/RECORDING state machine; all lifecycle `async def`; buffer-before-await pattern |
 | `rexy/repository.py` | `TelemetryRepository`: aiosqlite CRUD; `insert_lap` returns `lastrowid`; schema init; version check |
@@ -285,7 +400,7 @@ CREATE TABLE IF NOT EXISTS laps (
     lap_number   INTEGER NOT NULL,
     started_at   REAL    NOT NULL,   -- time.time() when insert_lap() is called
     completed_at REAL,               -- time.time() when complete_lap() is called; NULL if partial
-    lap_time_ms  INTEGER,            -- from gt-telem event; NULL for partial laps
+    lap_time_ms  INTEGER,            -- buf[-1]["last_lap_time_ms"]; NULL for partial laps
     car_code     INTEGER,            -- buf[0]["car_code"] captured before flush; NULL if buf empty
     is_complete  INTEGER DEFAULT 0   -- set to 1 by complete_lap() on successful flush
 );
@@ -294,35 +409,51 @@ CREATE TABLE IF NOT EXISTS frames (
     lap_id  INTEGER NOT NULL REFERENCES laps(id),
     seq     INTEGER NOT NULL,        -- 0-based; owned and reset by LapRecorder
     ts      REAL    NOT NULL,        -- time.time() injected by client.py
+    packet_id INTEGER,               -- gt-telem packet sequence number; useful for gap detection
 
     -- All heartbeat types (A, B, ~)
-    speed_mps REAL, engine_rpm REAL, gear INTEGER,
-    throttle INTEGER, brake INTEGER,     -- raw 0-255; frontend converts to %
-    clutch_pedal REAL,
+    speed_mps REAL, engine_rpm REAL,
+    current_gear INTEGER,            -- decoded: bits & 0b1111
+    suggested_gear INTEGER,          -- decoded: bits >> 4
+    throttle INTEGER, brake INTEGER, -- raw 0-255; frontend converts to %
+    clutch_pedal REAL, clutch_engagement REAL,
     boost_pressure REAL, fuel_level REAL, fuel_capacity REAL,
     oil_pressure REAL, oil_temp REAL, water_temp REAL,
     tire_fl_temp REAL, tire_fr_temp REAL, tire_rl_temp REAL, tire_rr_temp REAL,
     tire_fl_sus_height REAL, tire_fr_sus_height REAL,
     tire_rl_sus_height REAL, tire_rr_sus_height REAL,
+    tire_fl_radius REAL, tire_fr_radius REAL,   -- for speed cross-checks (Phase 3)
+    tire_rl_radius REAL, tire_rr_radius REAL,
     wheel_fl_rps REAL, wheel_fr_rps REAL, wheel_rl_rps REAL, wheel_rr_rps REAL,
     current_lap INTEGER, total_laps INTEGER,
     best_lap_time_ms INTEGER, last_lap_time_ms INTEGER,
+    time_of_day_ms INTEGER,          -- in-game time of day
+    race_start_pos INTEGER,          -- starting grid position
+    total_cars INTEGER,              -- cars in race
     position_x REAL, position_y REAL, position_z REAL,
+    velocity_x REAL, velocity_y REAL, velocity_z REAL,   -- for G-force derivation (Phase 3)
     ang_vel_x REAL, ang_vel_y REAL, ang_vel_z REAL,
     rotation_x REAL, rotation_y REAL, rotation_z REAL,
     road_plane_x REAL, road_plane_y REAL, road_plane_z REAL, road_plane_dist REAL,
+    body_height REAL, orientation REAL,
     min_alert_rpm REAL, max_alert_rpm REAL,
-    flags INTEGER, bits INTEGER,
-    car_code INTEGER,                -- always present in all heartbeat types
+    -- Decoded flag booleans (stored as 0/1)
+    tcs_active INTEGER, asm_active INTEGER,
+    cars_on_track INTEGER, is_paused INTEGER, in_gear INTEGER,
+    rev_limit INTEGER, hand_brake_active INTEGER,
     calc_max_speed REAL, trans_rpm REAL, trans_top_speed REAL,
+    gear1 REAL, gear2 REAL, gear3 REAL, gear4 REAL,
+    gear5 REAL, gear6 REAL, gear7 REAL, gear8 REAL,
+    car_code INTEGER,
 
     -- Heartbeat B only — NULL for A and ~
-    wheel_rotation_radians REAL,     -- gt-telem field name for steering wheel input
-    filler_float_fb REAL,            -- gt-telem field name for lateral slip angle (approx.)
-    sway REAL, heave REAL, surge REAL,
+    wheel_rotation_radians REAL,     -- steering wheel input
+    filler_float_fb REAL,            -- lateral slip angle (approx.)
+    sway REAL, heave REAL, surge REAL,   -- lateral/vertical/longitudinal body motion (G-force proxy)
 
     -- Heartbeat ~ only — NULL for A and B
-    throttle_filtered REAL, brake_filtered REAL, energy_recovery REAL,
+    throttle_filtered INTEGER, brake_filtered INTEGER,  -- raw 0-255; same scale as throttle/brake
+    energy_recovery REAL,
 
     PRIMARY KEY (lap_id, seq)
 );
@@ -336,9 +467,18 @@ PRAGMA user_version = 1;   -- set after CREATE TABLE statements
 
 | Column group | A | B | ~ |
 | --- | --- | --- | --- |
-| All standard fields incl. `car_code` | populated | populated | populated |
+| All standard fields (`speed_mps` through `car_code`) | populated | populated | populated |
 | `wheel_rotation_radians`, `filler_float_fb`, `sway`, `heave`, `surge` | NULL | populated | NULL |
 | `throttle_filtered`, `brake_filtered`, `energy_recovery` | NULL | NULL | populated |
+
+### G-forces
+
+`sway`, `heave`, `surge` (Heartbeat B) represent lateral, vertical, and longitudinal
+body motion from the motion-rig data. These are displayed directly as G-force proxies
+in the live view (Heartbeat B only). For Heartbeat A/~, G-force display is not available.
+
+`velocity_x/y/z` is recorded for all heartbeat types and is reserved for Phase 3
+G-force computation (numerical differentiation × 1/g).
 
 ---
 
@@ -397,18 +537,30 @@ services:
 
 ## WebSocket message format
 
-Flat JSON. All `frames` schema field names plus `ts` and `heartbeat_type`:
+Flat JSON containing all fields from `telemetry_to_dict` plus `ts` and `heartbeat_type`.
+Field names match the schema columns exactly:
 
 ```json
 {
   "ts": 1710000000.123,
   "heartbeat_type": "B",
+  "packet_id": 4521,
   "speed_mps": 55.3,
   "engine_rpm": 6800.0,
-  "gear": 4,
+  "current_gear": 4,
+  "suggested_gear": 5,
   "throttle": 200,
   "brake": 0,
+  "tcs_active": false,
+  "asm_active": false,
+  "cars_on_track": true,
+  "is_paused": false,
+  "in_gear": true,
+  "rev_limit": false,
+  "hand_brake_active": false,
   "car_code": 12345,
+  "position_x": 120.4, "position_y": 0.3, "position_z": -45.1,
+  "velocity_x": 0.12, "velocity_y": -0.01, "velocity_z": 55.3,
   "wheel_rotation_radians": 0.12,
   "filler_float_fb": -0.03,
   "sway": 0.01,
@@ -421,7 +573,7 @@ Flat JSON. All `frames` schema field names plus `ts` and `heartbeat_type`:
 ```
 
 All fields always present. Heartbeat-specific fields are `null` when inactive.
-Raw throttle/brake (0-255) transmitted as-is; frontend converts for display.
+Raw throttle/brake (0–255) transmitted as-is; frontend converts for display.
 
 ---
 
@@ -447,17 +599,18 @@ requestAnimationFrame(render);
 
 | Card | Fields | Visible when |
 | --- | --- | --- |
-| Lap | lap#, current/last/best lap time, total laps, race state | Always |
-| Engine | speed (km/h), RPM, gear, throttle %, brake %, boost, fuel % | Always |
-| Tires | temp FL/FR/RL/RR (°C), suspension height FL/FR/RL/RR | Always |
-| Thermal | oil temp (°C), oil pressure, water temp (°C) | Always |
-| Motion | Steering (`wheel_rotation_radians`), Slip angle (`filler_float_fb`), sway/heave/surge | `heartbeat_type == "B"` |
-| Filtered | throttle filtered %, brake filtered %, energy recovery | `heartbeat_type == "~"` |
-| Status | TCS, ASM, shift lights, suggested gear | Always |
-| Position | X/Y/Z, road plane normal + dist | Always |
+| Lap | `current_lap`, current/last/best lap time, `total_laps`, `cars_on_track` | Always |
+| Engine | speed (km/h), `engine_rpm`, `current_gear`, `suggested_gear`, throttle %, brake %, `boost_pressure`, fuel % | Always |
+| Tires | `tire_*_temp` (°C), `tire_*_sus_height` | Always |
+| Thermal | `oil_temp` (°C), `oil_pressure`, `water_temp` (°C) | Always |
+| Motion | `wheel_rotation_radians` (steering), `filler_float_fb` (slip), `sway`/`heave`/`surge` (G-force proxy) | `heartbeat_type == "B"` |
+| Filtered | `throttle_filtered` %, `brake_filtered` %, `energy_recovery` | `heartbeat_type == "~"` |
+| Status | `tcs_active`, `asm_active`, `rev_limit`, `in_gear`, `min/max_alert_rpm` (shift lights), `hand_brake_active` | Always |
+| Position | `position_x/y/z`, `velocity_x/y/z`, road plane | Always |
+| Race | `race_start_pos`, `total_cars`, `time_of_day_ms`, `car_code` | Always |
 
-Frontend conversions: speed `* 3.6` → km/h; throttle/brake `/ 255 * 100` → %;
-lap times → `m:ss.mmm`.
+Frontend conversions: `speed_mps * 3.6` → km/h; `throttle / 255 * 100` → %;
+lap times (`*_ms`) → `m:ss.mmm`; `sway/heave/surge` displayed as-is (motion-rig units).
 
 ---
 
@@ -467,11 +620,13 @@ lap times → `m:ss.mmm`.
 | --- | --- |
 | Mid-lap unclean crash | Buffer lost; `laps` row `is_complete=0` |
 | Clean shutdown (SIGTERM) | Tasks cancelled; `await recorder.close()` in finally; partial `is_complete=0` |
-| Race restart (`on_at_track` while RECORDING) | `reset_and_new_lap()` flushes partial inline (buffer-before-await pattern) |
+| Race restart (`on_at_track`/`on_in_race` while RECORDING) | `reset_and_new_lap()` flushes partial inline (buffer-before-await pattern) |
 | SQLite write failure | Error logged; buffer already cleared; `laps` row `is_complete=0`; no retry |
 | WebSocket client disconnect | Removed from `clients` set in `/ws` handler `finally` block |
 | Slow WebSocket client | `asyncio.gather` isolates per-client sends |
-| `on_lap_change` before `on_at_track` | `flush_and_new_lap()` no-op in IDLE state |
+| `on_lap_change` fires before recording started | `flush_and_new_lap()` no-op in IDLE state |
+| In-flight lifecycle task races with shutdown `close()` | State machine guarantees safety: `close()` and `flush_and_new_lap()` interleave at await points but never double-write; see Shutdown sequence section |
+| `GameEvents`/`RaceEvents` duplicate instance | Class-level list appended twice; create exactly one instance per session |
 
 ---
 
