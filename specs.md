@@ -20,7 +20,7 @@
 ## Goals
 
 - [x] Connect to GT7 telemetry and stream data (Phase 1)
-- [ ] Record telemetry per lap to persistent storage + minimal live view (Phase 2)
+- [x] Record telemetry per lap to persistent storage + minimal live view (Phase 2)
 - [ ] Lap analysis dashboard: full live display + two-lap comparison overlays + gap graph + driving line (Phase 3)
 - [ ] Car setup tagging, setup-vs-setup comparison, lap export (Phase 4)
 
@@ -192,19 +192,115 @@ network interface — no host-side install needed.
 
 ## Success criteria
 
+### Phase 1–2
+
 - [ ] Browser dashboard loads at `http://<host>:8000` from any device on LAN
 - [ ] All telemetry fields update live at ~60Hz with no perceptible lag
 - [ ] WebSocket reconnects automatically after disconnect
 - [ ] Dashboard readable on a phone screen while sitting in a racing seat
 - [ ] `docker compose up` is the only command needed on Linux/Raspberry Pi
 
+### Phase 3
+
+- [ ] Lap list shows all recorded laps with lap time and car code
+- [ ] Selecting one lap renders all trace channels with distance as x-axis
+- [ ] Selecting two laps renders an overlay with a time delta (gap) trace
+- [ ] Synchronized crosshair: hovering one chart highlights the same distance on all charts
+- [ ] Track map renders `position_x` vs `position_z`, color-coded by speed;
+      two-lap overlay in distinct colors
+- [ ] Distance channel is computed from `current_lap_time_ms`
+      (not wall-clock frame count) to avoid drift
+
+## Phase 3 — Analysis Dashboard
+
+### Overview
+
+A lap analysis view served from the same FastAPI process. Reads recorded laps from SQLite
+via REST; does not use the WebSocket feed. Modelled on professional motorsport tools
+(MoTeC i2, AiM Race Studio): distance-based x-axis, synchronized crosshair, time delta
+graph, and a color-coded track map.
+
+### Data flow
+
+```text
+Browser (analysis view)
+    │  GET /laps                  — list recorded laps
+    │  GET /laps/{id}/frames      — full frame data for one lap
+    ▼
+FastAPI (rexy/server.py)
+    │
+    ▼
+SQLite (rexy/repository.py)      — read-only queries
+```
+
+Live gauges continue to use the existing WebSocket feed. Analysis and live are separate views, not separate servers.
+
+### REST endpoints (new)
+
+| Method | Path | Returns |
+| --- | --- | --- |
+| `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, recorded_at}]` |
+| `GET` | `/laps/{id}/frames` | `[{seq, …all telemetry fields…, distance_m}]` |
+
+`distance_m` is computed server-side per frame:
+`d[i] = d[i-1] + speed_mps[i] * dt`
+where `dt = (current_lap_time_ms[i] - current_lap_time_ms[i-1]) / 1000`.
+Using `current_lap_time_ms` as the time base avoids drift from GT7's variable frame rate.
+
+### Trace channels
+
+Standard motorsport analysis set, rendered in this order:
+
+| Channel | Field(s) | Unit |
+| --- | --- | --- |
+| Speed | `speed_mps × 3.6` | km/h |
+| Throttle | `throttle / 255 × 100` | % |
+| Brake | `brake / 255 × 100` | % |
+| Gear | `gear` | — |
+| Lateral G | `g_lateral` | g |
+| Steering | `wheel_rotation_radians` (Heartbeat B only) | rad |
+| Time delta | computed (see below) | s |
+
+### Time delta (gap graph)
+
+Computed only when two laps are selected. For each distance point in the faster lap,
+interpolate the time the slower lap was at the same distance. Delta = cumulative time
+difference at each point. Positive = faster lap is ahead; negative = slower lap is ahead.
+
+Requires linear interpolation of both laps onto a shared distance grid.
+
+### Track map
+
+- Plot `position_x` vs `position_z` (Y is altitude; drop it for the 2D map).
+- Color-code the path by the selected channel (default: speed). Use a continuous colormap (cool → warm = slow → fast).
+- Two-lap overlay: render each lap as a separate colored path with opacity.
+- Rendered on a `<canvas>` element; no library required.
+
+### Rendering stack
+
+| Concern | Approach |
+| --- | --- |
+| Trace charts | [Chart.js](https://www.chartjs.org/) via CDN — Canvas-backed, handles 5K+ points, zoom/pan plugin |
+| Synchronized crosshair | Chart.js `crosshair` plugin or shared `mousemove` handler updating all chart instances |
+| Track map | Raw Canvas API |
+| UI state | Vanilla JS — single `state` object (`{lapA, lapB, activeChannel}`) |
+
+No npm, no build step. All dependencies loaded from CDN in `index.html`.
+
+### Constraints
+
+- No new Python dependencies for Phase 3 — SQLite reads use the existing `repository.py` pattern.
+- `GET /laps/{id}/frames` may return ~5 000 rows; response must be streamed or paginated
+  if response time exceeds 200ms in practice.
+- Track map must not re-fetch on channel change — cache frame data in JS after first fetch.
+
 ## Roadmap
 
 | Phase | Description | Status |
 | --- | --- | --- |
 | 1 | Foundation: telemetry connection, Docker, packaging | ✅ Done |
-| 2 | Recording: persist full telemetry per lap to SQLite (on `on_lap_change`); minimal live view (speed, RPM, gear, lap time) via WebSocket | 🔄 In design |
-| 3 | Analysis dashboard: full live telemetry display; lap selector; two-lap overlay comparison (throttle, brake, speed, RPM traces); gap graph; driving line (`position_x/y/z`) | 📋 Planned |
+| 2 | Recording: persist full telemetry per lap to SQLite (on `on_lap_change`); minimal live view (speed, RPM, gear, lap time) via WebSocket | ✅ Done |
+| 3 | Analysis dashboard: REST API for lap/frame data; distance-based trace charts; time delta graph; synchronized crosshair; color-coded track map | 📋 Planned |
 | 4 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
 
 ## References

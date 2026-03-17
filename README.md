@@ -13,7 +13,9 @@ G-forces, and more.
 
 ## macOS / Windows
 
-Docker Desktop on macOS and Windows cannot receive UDP from external devices — run directly on the host instead.
+Docker Desktop on macOS and Windows runs containers inside a Linux VM that is not on the
+same network as the host, so PS5 UDP telemetry cannot reach the container. Run directly
+on the host instead.
 
 ```shell
 python3 -m venv .venv && source .venv/bin/activate
