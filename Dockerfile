@@ -7,5 +7,8 @@ WORKDIR /app
 COPY . .
 RUN pip install --no-cache-dir .
 
+# Default DB location for Docker volume mount
+RUN mkdir -p /data
+
 # Default: run telemetry client (override in compose or CLI)
 CMD ["rexy"]
