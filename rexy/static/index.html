@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TelemetryIQ</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; background: #0d0d0d; color: #e0e0e0;
+         padding: 1rem; font-size: 13px; }
+  #header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  #status { font-size: 12px; padding: 0.25rem 0.5rem; border-radius: 3px;
+            background: #1a1a1a; border: 1px solid #333; }
+  #status.connected { border-color: #2a7; color: #2a7; }
+  #status.disconnected { border-color: #a33; color: #a33; }
+  h1 { font-size: 1rem; color: #888; letter-spacing: 0.1em; }
+  #dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+               gap: 0.75rem; }
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px;
+          padding: 0.75rem; }
+  .card h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em;
+             color: #666; margin-bottom: 0.5rem; border-bottom: 1px solid #222;
+             padding-bottom: 0.35rem; }
+  .row { display: flex; justify-content: space-between; padding: 0.12rem 0;
+         border-bottom: 1px solid #1e1e1e; }
+  .row:last-child { border-bottom: none; }
+  .lbl { color: #666; }
+  .val { color: #e0e0e0; font-weight: bold; text-align: right; }
+  .val.highlight { color: #4af; }
+  .val.warn { color: #fa4; }
+  .val.active { color: #4f4; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>TelemetryIQ</h1>
+  <span id="status" class="disconnected">● Connecting…</span>
+</div>
+<div id="dashboard">
+
+  <div class="card" id="card-lap">
+    <h2>Lap</h2>
+    <div class="row"><span class="lbl">Lap / Total</span>
+      <span class="val"><span id="current_lap">--</span> / <span id="total_laps">--</span></span></div>
+    <div class="row"><span class="lbl">Last</span>
+      <span class="val highlight" id="last_lap_time">--:--.---</span></div>
+    <div class="row"><span class="lbl">Best</span>
+      <span class="val highlight" id="best_lap_time">--:--.---</span></div>
+    <div class="row"><span class="lbl">Cars on track</span>
+      <span class="val" id="cars_on_track">--</span></div>
+  </div>
+
+  <div class="card" id="card-engine">
+    <h2>Engine</h2>
+    <div class="row"><span class="lbl">Speed</span>
+      <span class="val highlight" id="speed_kph">-- km/h</span></div>
+    <div class="row"><span class="lbl">RPM</span>
+      <span class="val" id="engine_rpm">----</span></div>
+    <div class="row"><span class="lbl">Gear / Suggested</span>
+      <span class="val"><span id="current_gear">-</span> / <span id="suggested_gear">-</span></span></div>
+    <div class="row"><span class="lbl">Throttle</span>
+      <span class="val active" id="throttle_pct">--%</span></div>
+    <div class="row"><span class="lbl">Brake</span>
+      <span class="val warn" id="brake_pct">--%</span></div>
+    <div class="row"><span class="lbl">Boost</span>
+      <span class="val" id="boost_pressure">--</span></div>
+    <div class="row"><span class="lbl">Fuel</span>
+      <span class="val" id="fuel_pct">--%</span></div>
+  </div>
+
+  <div class="card" id="card-tires">
+    <h2>Tires</h2>
+    <div class="row"><span class="lbl">Temp FL/FR</span>
+      <span class="val"><span id="tire_fl_temp">--</span> / <span id="tire_fr_temp">--</span> °C</span></div>
+    <div class="row"><span class="lbl">Temp RL/RR</span>
+      <span class="val"><span id="tire_rl_temp">--</span> / <span id="tire_rr_temp">--</span> °C</span></div>
+    <div class="row"><span class="lbl">Sus FL/FR (mm)</span>
+      <span class="val"><span id="tire_fl_sus_height">--</span> / <span id="tire_fr_sus_height">--</span></span></div>
+    <div class="row"><span class="lbl">Sus RL/RR (mm)</span>
+      <span class="val"><span id="tire_rl_sus_height">--</span> / <span id="tire_rr_sus_height">--</span></span></div>
+  </div>
+
+  <div class="card" id="card-thermal">
+    <h2>Thermal</h2>
+    <div class="row"><span class="lbl">Oil Temp</span>
+      <span class="val" id="oil_temp">-- °C</span></div>
+    <div class="row"><span class="lbl">Oil Pressure</span>
+      <span class="val" id="oil_pressure">--</span></div>
+    <div class="row"><span class="lbl">Water Temp</span>
+      <span class="val" id="water_temp">-- °C</span></div>
+  </div>
+
+  <div class="card hidden" id="card-motion">
+    <h2>Motion (Heartbeat B)</h2>
+    <div class="row"><span class="lbl">Steering (rad)</span>
+      <span class="val" id="wheel_rotation_radians">--</span></div>
+    <div class="row"><span class="lbl">Slip angle</span>
+      <span class="val" id="filler_float_fb">--</span></div>
+    <div class="row"><span class="lbl">Sway (lat G)</span>
+      <span class="val" id="sway">--</span></div>
+    <div class="row"><span class="lbl">Heave (vert G)</span>
+      <span class="val" id="heave">--</span></div>
+    <div class="row"><span class="lbl">Surge (lon G)</span>
+      <span class="val" id="surge">--</span></div>
+  </div>
+
+  <div class="card hidden" id="card-filtered">
+    <h2>Filtered (Heartbeat ~)</h2>
+    <div class="row"><span class="lbl">Throttle filt</span>
+      <span class="val active" id="throttle_filtered_pct">--%</span></div>
+    <div class="row"><span class="lbl">Brake filt</span>
+      <span class="val warn" id="brake_filtered_pct">--%</span></div>
+    <div class="row"><span class="lbl">Energy recovery</span>
+      <span class="val" id="energy_recovery">--</span></div>
+  </div>
+
+  <div class="card" id="card-status">
+    <h2>Status</h2>
+    <div class="row"><span class="lbl">TCS</span>
+      <span class="val" id="tcs_active">--</span></div>
+    <div class="row"><span class="lbl">ASM</span>
+      <span class="val" id="asm_active">--</span></div>
+    <div class="row"><span class="lbl">Rev limit</span>
+      <span class="val" id="rev_limit">--</span></div>
+    <div class="row"><span class="lbl">Shift (RPM)</span>
+      <span class="val"><span id="min_alert_rpm">----</span> – <span id="max_alert_rpm">----</span></span></div>
+    <div class="row"><span class="lbl">Hand brake</span>
+      <span class="val" id="hand_brake_active">--</span></div>
+    <div class="row"><span class="lbl">Car code</span>
+      <span class="val" id="car_code">--</span></div>
+  </div>
+
+  <div class="card" id="card-position">
+    <h2>Position</h2>
+    <div class="row"><span class="lbl">X / Y / Z</span>
+      <span class="val" style="font-size:11px">
+        <span id="position_x">--</span>,
+        <span id="position_y">--</span>,
+        <span id="position_z">--</span></span></div>
+    <div class="row"><span class="lbl">Vel X/Y/Z</span>
+      <span class="val" style="font-size:11px">
+        <span id="velocity_x">--</span>,
+        <span id="velocity_y">--</span>,
+        <span id="velocity_z">--</span></span></div>
+    <div class="row"><span class="lbl">Road plane dist</span>
+      <span class="val" id="road_plane_dist">--</span></div>
+  </div>
+
+  <div class="card" id="card-race">
+    <h2>Race</h2>
+    <div class="row"><span class="lbl">Start pos / Cars</span>
+      <span class="val"><span id="race_start_pos">--</span> / <span id="total_cars">--</span></span></div>
+    <div class="row"><span class="lbl">Time of day</span>
+      <span class="val" id="time_of_day_ms">--</span></div>
+    <div class="row"><span class="lbl">Heartbeat</span>
+      <span class="val" id="heartbeat_type">--</span></div>
+  </div>
+
+</div>
+<script>
+  let latest = {};
+  let retryDelay = 1000;
+  const maxDelay = 30000;
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws`);
+    const statusEl = document.getElementById('status');
+
+    ws.onopen = () => {
+      statusEl.textContent = '● Connected';
+      statusEl.className = 'connected';
+      retryDelay = 1000;
+    };
+    ws.onmessage = e => { latest = JSON.parse(e.data); };
+    ws.onclose = () => {
+      statusEl.textContent = `● Reconnecting (${(retryDelay/1000).toFixed(0)}s)…`;
+      statusEl.className = 'disconnected';
+      setTimeout(() => {
+        retryDelay = Math.min(retryDelay * 2, maxDelay);
+        connect();
+      }, retryDelay);
+    };
+  }
+
+  function fmtMs(ms) {
+    if (ms === null || ms === undefined || ms === -1) return '--:--.---';
+    const t = Math.max(0, Math.floor(ms));
+    const m = Math.floor(t / 60000);
+    const s = Math.floor((t % 60000) / 1000);
+    const f = t % 1000;
+    return `${m}:${String(s).padStart(2,'0')}.${String(f).padStart(3,'0')}`;
+  }
+
+  function fmtBool(v) { return v ? 'YES' : 'no'; }
+
+  function set(id, v, fallback = '--') {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (v === null || v === undefined) ? fallback : v;
+  }
+
+  function render() {
+    const d = latest;
+    if (d.speed_mps !== undefined) {
+      // Lap
+      set('current_lap', d.current_lap);
+      set('total_laps', d.total_laps);
+      set('last_lap_time', fmtMs(d.last_lap_time_ms));
+      set('best_lap_time', fmtMs(d.best_lap_time_ms));
+      set('cars_on_track', fmtBool(d.cars_on_track));
+
+      // Engine
+      set('speed_kph', (d.speed_mps * 3.6).toFixed(1) + ' km/h');
+      set('engine_rpm', d.engine_rpm?.toFixed(0));
+      set('current_gear', d.current_gear === 0 ? 'R' : (d.current_gear >= 15 ? 'N' : d.current_gear));
+      set('suggested_gear', (d.suggested_gear >= 15 || !d.suggested_gear) ? '--' : d.suggested_gear);
+      set('throttle_pct', ((d.throttle ?? 0) / 255 * 100).toFixed(0) + '%');
+      set('brake_pct', ((d.brake ?? 0) / 255 * 100).toFixed(0) + '%');
+      set('boost_pressure', d.boost_pressure?.toFixed(2));
+      set('fuel_pct', d.fuel_capacity > 0
+        ? ((d.fuel_level / d.fuel_capacity) * 100).toFixed(0) + '%' : '--');
+
+      // Tires
+      set('tire_fl_temp', d.tire_fl_temp?.toFixed(1));
+      set('tire_fr_temp', d.tire_fr_temp?.toFixed(1));
+      set('tire_rl_temp', d.tire_rl_temp?.toFixed(1));
+      set('tire_rr_temp', d.tire_rr_temp?.toFixed(1));
+      set('tire_fl_sus_height', d.tire_fl_sus_height?.toFixed(1));
+      set('tire_fr_sus_height', d.tire_fr_sus_height?.toFixed(1));
+      set('tire_rl_sus_height', d.tire_rl_sus_height?.toFixed(1));
+      set('tire_rr_sus_height', d.tire_rr_sus_height?.toFixed(1));
+
+      // Thermal
+      set('oil_temp', d.oil_temp?.toFixed(1) + ' °C');
+      set('oil_pressure', d.oil_pressure?.toFixed(2));
+      set('water_temp', d.water_temp?.toFixed(1) + ' °C');
+
+      // Motion (B only)
+      const isB = d.heartbeat_type === 'B';
+      document.getElementById('card-motion').classList.toggle('hidden', !isB);
+      if (isB) {
+        set('wheel_rotation_radians', d.wheel_rotation_radians?.toFixed(3));
+        set('filler_float_fb', d.filler_float_fb?.toFixed(3));
+        set('sway', d.sway?.toFixed(3));
+        set('heave', d.heave?.toFixed(3));
+        set('surge', d.surge?.toFixed(3));
+      }
+
+      // Filtered (~ only)
+      const isTilde = d.heartbeat_type === '~';
+      document.getElementById('card-filtered').classList.toggle('hidden', !isTilde);
+      if (isTilde) {
+        set('throttle_filtered_pct', ((d.throttle_filtered ?? 0) / 255 * 100).toFixed(0) + '%');
+        set('brake_filtered_pct', ((d.brake_filtered ?? 0) / 255 * 100).toFixed(0) + '%');
+        set('energy_recovery', d.energy_recovery?.toFixed(3));
+      }
+
+      // Status
+      set('tcs_active', fmtBool(d.tcs_active));
+      set('asm_active', fmtBool(d.asm_active));
+      set('rev_limit', fmtBool(d.rev_limit));
+      set('min_alert_rpm', d.min_alert_rpm?.toFixed(0));
+      set('max_alert_rpm', d.max_alert_rpm?.toFixed(0));
+      set('hand_brake_active', fmtBool(d.hand_brake_active));
+      set('car_code', d.car_code);
+
+      // Position
+      set('position_x', d.position_x?.toFixed(1));
+      set('position_y', d.position_y?.toFixed(1));
+      set('position_z', d.position_z?.toFixed(1));
+      set('velocity_x', d.velocity_x?.toFixed(2));
+      set('velocity_y', d.velocity_y?.toFixed(2));
+      set('velocity_z', d.velocity_z?.toFixed(2));
+      set('road_plane_dist', d.road_plane_dist?.toFixed(3));
+
+      // Race
+      set('race_start_pos', d.race_start_pos);
+      set('total_cars', d.total_cars);
+      set('time_of_day_ms', fmtMs(d.time_of_day_ms));
+      set('heartbeat_type', d.heartbeat_type);
+    }
+    requestAnimationFrame(render);
+  }
+
+  connect();
+  requestAnimationFrame(render);
+</script>
+</body>
+</html>
