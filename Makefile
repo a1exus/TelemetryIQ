@@ -1,8 +1,11 @@
-.PHONY: build up down logs restart install
+.PHONY: build up down logs restart install test
 
 install:
 	python3 -m venv .venv
-	.venv/bin/pip install -e .
+	.venv/bin/pip install -r requirements.txt
+
+test:
+	.venv/bin/pytest tests/ -v
 
 build:
 	docker compose build
