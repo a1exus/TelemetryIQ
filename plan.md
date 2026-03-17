@@ -1,52 +1,59 @@
-# GT7 — Implementation Plan
+# TelemetryIQ — Implementation Plan
 
 ## Summary
 
-High-level implementation plan for GT7. **What we have now is only the beginning** — Phase 1 is done; Phases 2 and beyond will grow the product. Tasks are tracked in `tasks/`.
+High-level implementation plan for TelemetryIQ. Phase 1 is done; Phases 2–4 build toward a full lap analysis tool. Tasks are tracked in `tasks/`.
 
 ## Phases
 
-### Phase 1: Foundation ✅ (current / beginning)
+### Phase 1: Foundation ✅
 
-- Set up project structure, tooling, and baseline.
-- **Deliverables**: Repo layout, dependencies, Docker Compose, minimal runnable `python -m gt7` that connects to telemetry.
+- **Deliverables**: Repo layout, dependencies, Docker Compose, `python -m rexy` connects to GT7 telemetry and streams to stdout.
 - **Tasks**: See `tasks/01-*.md`.
-- **Status**: In place; more will be built on top.
 
-### Phase 2: Core features (to be defined)
+### Phase 2: Recording
 
-- Implement the first real product features (dash, recorder, motion driver, analytics, etc. — TBD in specs).
-- **Deliverables**: Working features per updated specs.
-- **Tasks**: See `tasks/02-*.md` (add/split as we decide what to build).
+- Persist full telemetry per lap to SQLite on `on_lap_change` event.
+- Minimal live view via WebSocket (speed, RPM, gear, lap time) — enough to confirm the connection is working.
+- **Tasks**: See `tasks/02-*.md`.
 
-### Phase 3: Polish & release (later)
+### Phase 3: Analysis Dashboard
 
-- Testing, docs, performance, and release prep.
-- **Deliverables**: Tests passing, docs updated, release checklist done.
+- Full live telemetry display (all fields).
+- Lap selector; two-lap overlay comparison (throttle, brake, speed, RPM traces).
+- Gap graph; driving line from `position_x/y/z`.
 - **Tasks**: See `tasks/03-*.md`.
+
+### Phase 4: Setup Comparison
+
+- Car setup tagging per recorded lap.
+- Setup-vs-setup comparison on the same track.
+- Lap data export.
+- **Tasks**: See `tasks/04-*.md`.
 
 ## Dependencies
 
 - Phase 2 depends on Phase 1.
-- Phase 3 depends on Phase 2.
+- Phase 3 depends on Phase 2 (needs recorded laps to compare).
+- Phase 4 depends on Phase 3.
 
 ## Tech stack
 
 - **Python**: 3.10+
-- **Telemetry**: [gt-telem](https://pypi.org/project/gt-telem/) (`pip install gt-telem`)
-- **Runtime context**: PC on same network as PlayStation running GT7; telemetry enabled in game.
+- **Telemetry**: [gt-telem](https://pypi.org/project/gt-telem/)
+- **Runtime context**: PC/Raspberry Pi on same LAN as PlayStation running GT7; telemetry enabled in game.
 
 ## Risks & mitigations
 
-| Risk | Mitigation |
-|------|-------------|
-| PlayStation not found / wrong network | Document network requirements; handle `PlayStationNotFoundError` / `PlayStationOnStandbyError` from gt-telem |
-| _Risk_ | _Mitigation_ |
+| Risk                                               | Mitigation                                                                    |
+|----------------------------------------------------|-------------------------------------------------------------------------------|
+| PlayStation not found / wrong network              | Handle `PlayStationNotFoundError` / `PlayStationOnStandbyError` from gt-telem |
+| macOS / Windows Docker Desktop can't receive PS5 UDP | Run gt-telem on host directly (documented in README)                        |
 
 ## Revision log
 
 | Date | Change |
 |------|--------|
-| 2025-03-15 | Initial plan; phases and task references added |
+| 2025-03-15 | Initial plan |
 | 2025-03-15 | Aligned with gt-telem; added tech stack and PS discovery error mitigation |
-| 2025-03-15 | Clarified: Phase 1 = beginning only; Phase 2/3 = product growth to be defined |
+| 2026-03-16 | Rethought phases: recording first, analysis second, setup comparison fourth |

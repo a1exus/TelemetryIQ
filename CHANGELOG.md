@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Week of 2026-03-16]
+
+### Changed
+
+- Rethought product phases: recording (Phase 2) now precedes the analysis dashboard (Phase 3); setup comparison added as Phase 4
+- Removed lap recording from "out of scope" — it is now the core of Phase 2
+- `specs.md` is now the single source of truth for constraints and design decisions; no separate design documents
+- Updated `plan.md`, `tasks/`, `README.md`, `GEMINI.md`, and `CLAUDE.md` to reflect new phases and correct entrypoint (`python -m rexy`)
+- Driving line (`position_x/y/z`) added to Phase 3 dashboard requirements
+
 ## [Week of 2026-03-15]
 
 ### Added
@@ -11,23 +21,22 @@ All notable changes to this project will be documented in this file.
   (`A`, `B`, or `~`)
 - `.env.example` with documented configuration options
 - README with prerequisites, setup, run instructions, and config reference
-- `pyproject.toml` — modern packaging; defines `rexy` CLI entry point and dependencies
-- `Makefile` with `install`, `build`, `up`, `down`, `logs`, `restart` targets
-- macOS install via `pipx install .` (pip via brew) documented in README
+- `Makefile` with `build`, `up`, `down`, `logs`, `restart` targets
 
 ### Changed
 
 - `TurismoClient` now reads `PS_IP` and `GT7_HEARTBEAT_TYPE` from environment
 - Docker Compose wires in `.env` via `env_file` (optional, won't fail if missing)
 - Renamed Docker Compose service from `gt7` to `telemetryiq`
-- Renamed package from `gt7` to `rexy`; entrypoint is now `rexy` CLI command
-- Dockerfile updated to Python 3.14; installs via `pip install .` from `pyproject.toml`
-- Removed `requirements.txt` — deps are now declared in `pyproject.toml`
+- Renamed package directory from `gt7` to `rexy`
+- Reverted to `requirements.txt` for dependency management; removed `pyproject.toml`
+- Dockerfile reverted to `pip install -r requirements.txt`; entrypoint is
+  `python -m rexy`
 
 ### Notes
 
-- Docker Desktop on macOS cannot receive UDP from external devices (PS5).
-  Use a Linux host (e.g. Raspberry Pi) on the same LAN, or install via pip on macOS.
+- Docker Desktop on macOS and Windows cannot receive UDP from external devices (PS5).
+  Use a Linux host (e.g. Raspberry Pi) on the same LAN, or install via pip on macOS/Windows.
 
 ## [Week of 2026-03-09]
 

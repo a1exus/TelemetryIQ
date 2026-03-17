@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# TelemetryIQ — Python 3.14+ for gt-telem
+FROM python:3.14-slim
 
 WORKDIR /app
 

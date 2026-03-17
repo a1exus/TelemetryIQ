@@ -1,7 +1,8 @@
 # TelemetryIQ
 
-Live telemetry dashboard for Gran Turismo 7 — speed, RPM, G-forces, lap times,
-inputs, and more, streamed in real time from your PlayStation.
+GT7 telemetry recorder and lap analysis tool — records full telemetry per lap,
+streams live data, and enables lap-over-lap comparison of speed, throttle, brake,
+G-forces, and more.
 
 ## Prerequisites
 
@@ -10,22 +11,14 @@ inputs, and more, streamed in real time from your PlayStation.
   **Settings → Options → Machine → BD-ROM / PS5 Activity → GT7 UDP Telemetry → On**
 - PlayStation and your machine on the same network
 
-## macOS (pip via brew)
+## macOS / Windows
 
-Docker Desktop on macOS cannot receive UDP from external devices — use pip instead.
-
-```shell
-brew install pipx
-pipx install .
-rexy
-```
-
-For development (editable install):
+Docker Desktop on macOS and Windows cannot receive UDP from external devices — run directly on the host instead.
 
 ```shell
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-rexy
+pip install -r requirements.txt
+python -m rexy
 ```
 
 ## Linux / Docker (e.g. Raspberry Pi)

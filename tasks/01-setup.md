@@ -1,7 +1,7 @@
 # Task: Project setup
 
-**Phase**: 1 — Foundation  
-**Status**: Not started
+**Phase**: 1 — Foundation
+**Status**: Complete ✅
 
 ## Objective
 
@@ -9,12 +9,8 @@ Set up project structure, dependency management, and a minimal runnable baseline
 
 ## Acceptance criteria
 
-- [ ] Project layout and config files in place
-- [ ] Dependencies declared and installable
-- [ ] Minimal “hello world” or equivalent runs
-- [ ] README with run instructions
-
-## Notes
-
-- Python 3.10+; add `gt-telem` to dependencies (see [PyPI](https://pypi.org/project/gt-telem/)).
-- Align with tech choices in `specs.md` and `plan.md`.
+- [x] Project layout and config files in place
+- [x] Dependencies declared in `requirements.txt` (`gt-telem`)
+- [x] `python -m rexy` connects to GT7 and streams speed/RPM/gear to stdout
+- [x] README with run instructions
+- [x] Docker Compose with `network_mode: host` for Raspberry Pi
