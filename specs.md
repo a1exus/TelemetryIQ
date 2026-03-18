@@ -240,13 +240,16 @@ Live gauges continue to use the existing WebSocket feed. Analysis and live are s
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, recorded_at}]` |
+| `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, started_at}]` |
 | `GET` | `/laps/{id}/frames` | `[{seq, …all telemetry fields…, distance_m}]` |
 
 `distance_m` is computed server-side per frame:
 `d[i] = d[i-1] + speed_mps[i] * dt`
-where `dt = (current_lap_time_ms[i] - current_lap_time_ms[i-1]) / 1000`.
-Using `current_lap_time_ms` as the time base avoids drift from GT7's variable frame rate.
+where `dt = ts[i] - ts[i-1]` and `ts` is the server-side wall-clock timestamp set on
+frame receipt. GT7 does not broadcast a running lap timer (`current_lap_time_ms` is not
+in the telemetry stream); `ts` at ~60 Hz is accurate to within one frame interval.
+Frames where `dt > 0.1 s` (pause, menu, load screen) contribute zero distance to
+prevent teleportation artefacts.
 
 ### Trace channels
 

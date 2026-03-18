@@ -89,7 +89,7 @@
       <canvas id="ch-brake" height="60"></canvas></div>
     <div class="chart-wrap"><p class="chart-lbl">Gear</p>
       <canvas id="ch-gear" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Lateral G — sway (Heartbeat B only)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Lateral accel — sway, m/s² (Heartbeat B only)</p>
       <canvas id="ch-sway" height="50"></canvas></div>
     <div class="chart-wrap"><p class="chart-lbl">Steering rad (Heartbeat B only)</p>
       <canvas id="ch-steer" height="50"></canvas></div>
@@ -214,7 +214,7 @@ const CHART_DEFS = [
   { id: 'ch-throttle', fn: f => f.throttle / 255 * 100,      col: '#4f4', yLbl: '%'    },
   { id: 'ch-brake',    fn: f => f.brake    / 255 * 100,      col: '#f44', yLbl: '%'    },
   { id: 'ch-gear',     fn: f => f.current_gear,               col: '#aaa', yLbl: ''     },
-  { id: 'ch-sway',     fn: f => f.sway,                       col: '#c8f', yLbl: 'g'    },
+  { id: 'ch-sway',     fn: f => f.sway,                       col: '#c8f', yLbl: 'm/s²' },
   { id: 'ch-steer',    fn: f => f.wheel_rotation_radians,     col: '#fc8', yLbl: 'rad'  },
 ];
 
