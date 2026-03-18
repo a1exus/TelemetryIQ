@@ -20,6 +20,7 @@ on the host instead.
 ```shell
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+export PS_IP=        # set to your PlayStation's IP, or leave blank for auto-discovery
 python -m rexy
 ```
 
