@@ -96,6 +96,55 @@ async def test_init_idempotent(tmp_path):
     await r2.close()
 
 
+@pytest.mark.asyncio
+async def test_list_laps_empty(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    laps = await repo.list_laps()
+    assert laps == []
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_list_laps_returns_complete_only(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    # Not yet complete — must not appear
+    assert await repo.list_laps() == []
+    await repo.complete_lap(lap_id, 90000, 90.0, is_complete=1, car_code=42)
+    laps = await repo.list_laps()
+    assert len(laps) == 1
+    assert laps[0]["lap_time_ms"] == 90000
+    assert laps[0]["car_code"] == 42
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_frames_ordered_by_seq(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    frames = [{"seq": i, "ts": float(i), "speed_mps": float(i), "packet_id": i}
+              for i in range(3)]
+    await repo.insert_frames(lap_id, frames)
+    result = await repo.get_frames(lap_id)
+    assert [r["seq"] for r in result] == [0, 1, 2]
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_frames_empty(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    assert await repo.get_frames(lap_id) == []
+    await repo.close()
+
+
 def _all_frame_keys():
     """Return all non-lap_id frame column names for building test dicts."""
     from rexy.repository import _FRAME_COLS

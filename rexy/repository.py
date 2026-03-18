@@ -171,6 +171,27 @@ class TelemetryRepository:
         await self.db.executemany(_FRAME_INSERT, rows)
         await self.db.commit()
 
+    async def list_laps(self) -> list[dict]:
+        """Return all complete laps, newest first."""
+        cur = await self.db.execute(
+            "SELECT id, lap_number, lap_time_ms, car_code, started_at "
+            "FROM laps WHERE is_complete = 1 ORDER BY started_at DESC"
+        )
+        rows = await cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def get_frames(self, lap_id: int) -> list[dict]:
+        """Return all frames for a lap ordered by seq."""
+        cur = await self.db.execute(
+            "SELECT * FROM frames WHERE lap_id = ? ORDER BY seq", (lap_id,)
+        )
+        rows = await cur.fetchall()
+        if not rows:
+            return []
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+
     async def close(self) -> None:
         if self.db:
             await self.db.close()
