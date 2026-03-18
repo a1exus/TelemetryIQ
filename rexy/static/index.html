@@ -351,41 +351,47 @@ async function updateCharts() {
   if (!laps.length) return;  // normal on 0→1 race-start increment
 
   const lastLap = laps[0];  // server returns newest first
-  const bestLap = laps.reduce((b, l) => l.lap_time_ms < b.lap_time_ms ? l : b, laps[0]);
+  const bestLap = laps.reduce((b, l) => {
+    if (l.lap_time_ms == null) return b;
+    if (b.lap_time_ms == null) return l;
+    return l.lap_time_ms < b.lap_time_ms ? l : b;
+  }, laps[0]);
 
   let framesLast, framesBest;
-  if (lastLap.id === bestLap.id) {
-    framesLast = framesBest = await fetch(`/laps/${lastLap.id}/frames`).then(r => r.json());
-  } else {
-    [framesLast, framesBest] = await Promise.all([
-      fetch(`/laps/${lastLap.id}/frames`).then(r => r.json()),
-      fetch(`/laps/${bestLap.id}/frames`).then(r => r.json()),
-    ]);
-  }
+  try {
+    if (lastLap.id === bestLap.id) {
+      framesLast = framesBest = await fetch(`/laps/${lastLap.id}/frames`).then(r => r.json());
+    } else {
+      [framesLast, framesBest] = await Promise.all([
+        fetch(`/laps/${lastLap.id}/frames`).then(r => r.json()),
+        fetch(`/laps/${bestLap.id}/frames`).then(r => r.json()),
+      ]);
+    }
 
-  // Reveal charts, remove placeholder
-  document.getElementById('chart-placeholder')?.remove();
-  ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
-    document.getElementById(id).classList.remove('hidden'));
+    // Reveal charts, remove placeholder
+    document.getElementById('chart-placeholder')?.remove();
+    ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
+      document.getElementById(id).classList.remove('hidden'));
 
-  const tbDs = [
-    mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
-    mkDs(framesLast, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
-  ];
-  const spdDs = [
-    mkDs(framesLast, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
-    mkDs(framesBest, f => (f.speed_mps ?? 0) * 3.6, '#fa4'),
-  ];
+    const tbDs = [
+      mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
+      mkDs(framesLast, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
+    ];
+    const spdDs = [
+      mkDs(framesLast, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
+      mkDs(framesBest, f => (f.speed_mps ?? 0) * 3.6, '#fa4'),
+    ];
 
-  if (!charts.tb) {
-    charts.tb  = new Chart(document.getElementById('chart-tb'),
-      { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
-    charts.spd = new Chart(document.getElementById('chart-spd'),
-      { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
-  } else {
-    charts.tb.data.datasets  = tbDs;  charts.tb.update();
-    charts.spd.data.datasets = spdDs; charts.spd.update();
-  }
+    if (!charts.tb) {
+      charts.tb  = new Chart(document.getElementById('chart-tb'),
+        { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
+      charts.spd = new Chart(document.getElementById('chart-spd'),
+        { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
+    } else {
+      charts.tb.data.datasets  = tbDs;  charts.tb.update();
+      charts.spd.data.datasets = spdDs; charts.spd.update();
+    }
+  } catch { return; }
 }
 
 // ── WebSocket ──────────────────────────────────────────────
