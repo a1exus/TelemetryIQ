@@ -16,7 +16,7 @@ from rexy.client import setup_client
 from rexy.dispatcher import run_dispatcher
 from rexy.recorder import LapRecorder
 from rexy.repository import TelemetryRepository
-from rexy.server import app, clients, run_broadcaster
+from rexy.server import app, clients, run_broadcaster, set_repo
 
 
 async def _main() -> None:
@@ -27,6 +27,7 @@ async def _main() -> None:
     # Database — must init before anything else
     repo = TelemetryRepository(db_path)
     await repo.init()
+    set_repo(repo)
     session_id = await repo.insert_session(started_at=time.time())
 
     # Recorder and queues
