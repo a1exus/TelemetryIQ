@@ -2,345 +2,482 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>TelemetryIQ</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Courier New', monospace; background: #0d0d0d; color: #e0e0e0;
-         padding: 1rem; font-size: 16px; }
 
-  #header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-  h1 { font-size: 1rem; color: #555; letter-spacing: 0.1em; }
-  #status { font-size: 0.85rem; padding: 0.25rem 0.6rem; border-radius: 3px;
+  html, body { height: 100%; overflow: hidden;
+               font-family: 'Courier New', monospace;
+               background: #0d0d0d; color: #e0e0e0; }
+
+  /* ── Full-height, no-scroll HUD ────────────────────── */
+  #app { display: flex; flex-direction: column;
+         height: 100svh; padding: 0.5rem; gap: 0.35rem; }
+
+  /* ── Top bar ───────────────────────────────────────── */
+  #topbar { display: flex; justify-content: space-between;
+            align-items: center; flex-shrink: 0; height: 1.6rem; }
+
+  #status { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 3px;
             background: #1a1a1a; border: 1px solid #333; }
   #status.connected    { border-color: #2a7; color: #2a7; }
   #status.disconnected { border-color: #a33; color: #a33; }
 
-  /* ── layout ─────────────────────────────────────────────── */
-  #dashboard { display: grid;
-               grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-               gap: 1rem; }
+  #details-btn { background: none; border: 1px solid #333; color: #555; cursor: pointer;
+                 font-family: inherit; font-size: 0.7rem; letter-spacing: 0.05em;
+                 padding: 0.15rem 0.6rem; border-radius: 3px; }
+  #details-btn:hover { border-color: #666; color: #aaa; }
 
-  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
-          padding: 1rem; }
-  .card h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em;
-             color: #555; margin-bottom: 0.75rem; border-bottom: 1px solid #222;
-             padding-bottom: 0.4rem; }
+  /* ── Shift light bar (12 segments) ─────────────────── */
+  #shift-bar { display: flex; gap: 3px; height: 1.2rem; flex-shrink: 0; }
+  .seg { flex: 1; border-radius: 2px; background: #141414; border: 1px solid #1e1e1e; }
+  /* active states — only applied by JS */
+  .seg.grn { background: #1ef060; }
+  .seg.amb { background: #ffa020; }
+  .seg.red { background: #ff3030; }
+  .seg.flash { animation: blink 0.1s step-end infinite; }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.1; } }
 
-  /* ── hero numbers (speed, RPM, gear, lap) ───────────────── */
-  .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
-               margin-bottom: 0.75rem; }
-  .hero { background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
-          padding: 0.6rem 0.8rem; text-align: center; }
-  .hero .lbl { font-size: 0.65rem; color: #555; text-transform: uppercase;
-               letter-spacing: 0.1em; margin-bottom: 0.2rem; }
-  .hero .big { font-size: 2.8rem; font-weight: bold; line-height: 1;
-               letter-spacing: -0.02em; }
-  .hero.wide { grid-column: span 2; }
-  .hero .big.highlight { color: #4af; }
-  .hero .big.active    { color: #4f4; }
-  .hero .big.warn      { color: #fa4; }
-  .hero .big.neutral   { color: #e0e0e0; }
+  /* ── Instruments: Speed | GEAR | RPM ───────────────── */
+  #instruments { display: grid; grid-template-columns: 1fr 1.1fr 1fr;
+                 gap: 0.35rem; flex: 1; min-height: 0; }
 
-  /* ── regular rows ───────────────────────────────────────── */
-  .row { display: flex; justify-content: space-between; align-items: baseline;
-         padding: 0.3rem 0; border-bottom: 1px solid #1e1e1e; }
-  .row:last-child { border-bottom: none; }
-  .lbl { color: #666; font-size: 0.85rem; }
-  .val { color: #e0e0e0; font-weight: bold; font-size: 1.1rem; text-align: right; }
-  .val.highlight { color: #4af; }
-  .val.warn      { color: #fa4; }
-  .val.active    { color: #4f4; }
+  .inst { background: #111; border: 1px solid #1e1e1e; border-radius: 6px;
+          display: flex; flex-direction: column;
+          justify-content: center; align-items: center;
+          padding: 0.4rem; min-height: 0; overflow: hidden; }
 
+  .inst-lbl { font-size: 0.6rem; text-transform: uppercase;
+              letter-spacing: 0.12em; color: #444;
+              margin-bottom: 0.1rem; flex-shrink: 0; }
+
+  .inst-val { font-weight: bold; line-height: 1; letter-spacing: -0.03em;
+              font-size: clamp(2rem, 8vw, 4.5rem); }
+
+  /* Gear gets the biggest treatment */
+  #current_gear { font-size: clamp(4rem, 16vw, 8rem); color: #e0e0e0; }
+  #speed_kph    { color: #4af; }
+  #engine_rpm   { color: #ccc; }
+
+  .inst-unit { font-size: 0.6rem; color: #444; text-transform: uppercase;
+               letter-spacing: 0.08em; margin-top: 0.15rem; flex-shrink: 0; }
+
+  /* ── Lap times ──────────────────────────────────────── */
+  #lap-section { background: #111; border: 1px solid #1e1e1e;
+                 border-radius: 6px; padding: 0.5rem 0.75rem; flex-shrink: 0; }
+
+  #lap-primary { display: flex; justify-content: space-between;
+                 align-items: center; margin-bottom: 0.2rem; }
+
+  #lap-counter { font-size: 0.6rem; color: #444; text-transform: uppercase;
+                 letter-spacing: 0.1em; margin-bottom: 0.1rem; }
+  #running-time { font-size: clamp(1.4rem, 5vw, 2rem); font-weight: bold; color: #e0e0e0; }
+
+  #lap-delta { font-size: clamp(1.4rem, 5vw, 2rem); font-weight: bold; }
+  #lap-delta.ahead  { color: #4f4; }
+  #lap-delta.behind { color: #f44; }
+  #lap-delta.none   { color: #333; }
+
+  #lap-secondary { display: flex; justify-content: space-between;
+                   font-size: 0.8rem; }
+  .sub-lbl { color: #444; }
+  .sub-val { color: #4af; font-weight: bold; margin-left: 0.3rem; }
+
+  /* ── Pedals ─────────────────────────────────────────── */
+  #pedals { display: grid; grid-template-columns: 1fr 1fr;
+            gap: 0.4rem; flex-shrink: 0; }
+
+  .pedal { display: flex; align-items: center; gap: 0.35rem; }
+  .pedal-lbl { font-size: 0.6rem; text-transform: uppercase; color: #444;
+               letter-spacing: 0.08em; width: 1rem; flex-shrink: 0; }
+  .pedal-track { flex: 1; height: 0.9rem; background: #1a1a1a;
+                 border-radius: 2px; border: 1px solid #1e1e1e; overflow: hidden; }
+  .pedal-fill { height: 100%; width: 0%; border-radius: 2px; }
+  #t-fill { background: #4f4; }
+  #b-fill { background: #f44; }
+  .pedal-pct { font-size: 0.7rem; font-weight: bold; width: 2.5rem;
+               text-align: right; flex-shrink: 0; }
+  #t-pct { color: #4f4; }
+  #b-pct { color: #f44; }
+
+  /* ── Status badges ──────────────────────────────────── */
+  #badges { display: flex; gap: 0.35rem; align-items: center; flex-shrink: 0; }
+
+  .badge { font-size: 0.6rem; padding: 0.12rem 0.45rem; border-radius: 3px;
+           border: 1px solid #222; color: #333; letter-spacing: 0.07em;
+           text-transform: uppercase; }
+  .badge.on { background: #2a1800; border-color: #fa4; color: #fa4; }
+
+  #fuel-val { margin-left: auto; font-size: 0.85rem; font-weight: bold; }
+  #fuel-val .lbl { color: #444; font-size: 0.6rem; text-transform: uppercase;
+                   letter-spacing: 0.08em; margin-right: 0.25rem; }
+
+  /* ── Tire temps ─────────────────────────────────────── */
+  #tires { display: grid; grid-template-columns: 1fr 1fr;
+           gap: 0.3rem; flex-shrink: 0; }
+
+  .tire { background: #111; border: 1px solid #1e1e1e; border-radius: 4px;
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 0.2rem 0.6rem; }
+  .tire-pos { font-size: 0.6rem; color: #444; text-transform: uppercase;
+              letter-spacing: 0.08em; }
+  .tire-temp { font-size: 1rem; font-weight: bold; }
+
+  /* ── Secondary overlay ──────────────────────────────── */
+  #secondary { position: fixed; inset: 0; background: rgba(0,0,0,0.94);
+               overflow-y: auto; padding: 1rem; display: none; z-index: 100; }
+  #secondary.open { display: block; }
+
+  #sec-close { position: sticky; top: 0; float: right; background: #1a1a1a;
+               border: 1px solid #333; color: #999; padding: 0.2rem 0.75rem;
+               border-radius: 3px; cursor: pointer; font-family: inherit;
+               font-size: 0.8rem; margin-bottom: 0.75rem; }
+
+  .sec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+              gap: 0.75rem; clear: both; }
+  .sec-card { background: #1a1a1a; border: 1px solid #252525; border-radius: 4px;
+              padding: 0.75rem; }
+  .sec-card h3 { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em;
+                 color: #555; margin-bottom: 0.5rem; border-bottom: 1px solid #222;
+                 padding-bottom: 0.3rem; }
+  .sec-row { display: flex; justify-content: space-between; padding: 0.18rem 0;
+             border-bottom: 1px solid #1c1c1c; font-size: 0.85rem; }
+  .sec-row:last-child { border-bottom: none; }
+  .sec-lbl { color: #555; }
+  .sec-val { color: #e0e0e0; font-weight: bold; text-align: right; }
   .hidden { display: none; }
 </style>
 </head>
 <body>
-<div id="header">
-  <h1>TelemetryIQ</h1>
-  <span id="status" class="disconnected">● Connecting…</span>
-</div>
-<div id="dashboard">
+<div id="app">
 
-  <!-- ── Lap ─────────────────────────────────────────────── -->
-  <div class="card" id="card-lap">
-    <h2>Lap</h2>
-    <div class="hero-grid">
-      <div class="hero">
-        <div class="lbl">Lap</div>
-        <div class="big neutral" id="current_lap">--</div>
-      </div>
-      <div class="hero">
-        <div class="lbl">/ Total</div>
-        <div class="big neutral" id="total_laps">--</div>
-      </div>
-      <div class="hero wide">
-        <div class="lbl">Last lap</div>
-        <div class="big highlight" id="last_lap_time">--:--.---</div>
-      </div>
-      <div class="hero wide">
-        <div class="lbl">Best lap</div>
-        <div class="big highlight" id="best_lap_time">--:--.---</div>
-      </div>
+  <div id="topbar">
+    <span id="status" class="disconnected">● Connecting…</span>
+    <button id="details-btn" onclick="toggleSecondary()">Details ▾</button>
+  </div>
+
+  <!-- Shift bar: 12 segments — 7 green, 3 amber, 2 red -->
+  <div id="shift-bar">
+    <div class="seg" id="s0"></div><div class="seg" id="s1"></div>
+    <div class="seg" id="s2"></div><div class="seg" id="s3"></div>
+    <div class="seg" id="s4"></div><div class="seg" id="s5"></div>
+    <div class="seg" id="s6"></div><div class="seg" id="s7"></div>
+    <div class="seg" id="s8"></div><div class="seg" id="s9"></div>
+    <div class="seg" id="s10"></div><div class="seg" id="s11"></div>
+  </div>
+
+  <div id="instruments">
+    <div class="inst">
+      <div class="inst-lbl">Speed</div>
+      <div class="inst-val" id="speed_kph">---</div>
+      <div class="inst-unit">km/h</div>
     </div>
-    <div class="row"><span class="lbl">Cars on track</span>
-      <span class="val" id="cars_on_track">--</span></div>
-  </div>
-
-  <!-- ── Engine ───────────────────────────────────────────── -->
-  <div class="card" id="card-engine">
-    <h2>Engine</h2>
-    <div class="hero-grid">
-      <div class="hero wide">
-        <div class="lbl">Speed</div>
-        <div class="big highlight" id="speed_kph">-- km/h</div>
-      </div>
-      <div class="hero">
-        <div class="lbl">RPM</div>
-        <div class="big neutral" id="engine_rpm">----</div>
-      </div>
-      <div class="hero">
-        <div class="lbl">Gear</div>
-        <div class="big neutral" id="current_gear">-</div>
-      </div>
+    <div class="inst">
+      <div class="inst-lbl">Gear</div>
+      <div class="inst-val" id="current_gear">-</div>
     </div>
-    <div class="row"><span class="lbl">Suggested gear</span>
-      <span class="val" id="suggested_gear">--</span></div>
-    <div class="row"><span class="lbl">Throttle</span>
-      <span class="val active" id="throttle_pct">--%</span></div>
-    <div class="row"><span class="lbl">Brake</span>
-      <span class="val warn" id="brake_pct">--%</span></div>
-    <div class="row"><span class="lbl">Boost</span>
-      <span class="val" id="boost_pressure">--</span></div>
-    <div class="row"><span class="lbl">Fuel</span>
-      <span class="val" id="fuel_pct">--%</span></div>
+    <div class="inst">
+      <div class="inst-lbl">RPM</div>
+      <div class="inst-val" id="engine_rpm">----</div>
+    </div>
   </div>
 
-  <!-- ── Tires ────────────────────────────────────────────── -->
-  <div class="card" id="card-tires">
-    <h2>Tires</h2>
-    <div class="row"><span class="lbl">Temp FL / FR</span>
-      <span class="val"><span id="tire_fl_temp">--</span> / <span id="tire_fr_temp">--</span> °C</span></div>
-    <div class="row"><span class="lbl">Temp RL / RR</span>
-      <span class="val"><span id="tire_rl_temp">--</span> / <span id="tire_rr_temp">--</span> °C</span></div>
-    <div class="row"><span class="lbl">Sus FL / FR (mm)</span>
-      <span class="val"><span id="tire_fl_sus_height">--</span> / <span id="tire_fr_sus_height">--</span></span></div>
-    <div class="row"><span class="lbl">Sus RL / RR (mm)</span>
-      <span class="val"><span id="tire_rl_sus_height">--</span> / <span id="tire_rr_sus_height">--</span></span></div>
+  <div id="lap-section">
+    <div id="lap-primary">
+      <div>
+        <div id="lap-counter">Lap <span id="current_lap">--</span> / <span id="total_laps">--</span></div>
+        <div id="running-time">--:--.---</div>
+      </div>
+      <div id="lap-delta" class="none">--</div>
+    </div>
+    <div id="lap-secondary">
+      <span><span class="sub-lbl">LAST</span><span class="sub-val" id="last_lap_time">--:--.---</span></span>
+      <span><span class="sub-lbl">BEST</span><span class="sub-val" id="best_lap_time">--:--.---</span></span>
+    </div>
   </div>
 
-  <!-- ── Thermal ───────────────────────────────────────────── -->
-  <div class="card" id="card-thermal">
-    <h2>Thermal</h2>
-    <div class="row"><span class="lbl">Oil temp</span>
-      <span class="val" id="oil_temp">-- °C</span></div>
-    <div class="row"><span class="lbl">Oil pressure</span>
-      <span class="val" id="oil_pressure">--</span></div>
-    <div class="row"><span class="lbl">Water temp</span>
-      <span class="val" id="water_temp">-- °C</span></div>
+  <div id="pedals">
+    <div class="pedal">
+      <span class="pedal-lbl">T</span>
+      <div class="pedal-track"><div class="pedal-fill" id="t-fill"></div></div>
+      <span class="pedal-pct" id="t-pct">0%</span>
+    </div>
+    <div class="pedal">
+      <span class="pedal-lbl">B</span>
+      <div class="pedal-track"><div class="pedal-fill" id="b-fill"></div></div>
+      <span class="pedal-pct" id="b-pct">0%</span>
+    </div>
   </div>
 
-  <!-- ── Motion (Heartbeat B) ─────────────────────────────── -->
-  <div class="card hidden" id="card-motion">
-    <h2>Motion (Heartbeat B)</h2>
-    <div class="row"><span class="lbl">Steering (rad)</span>
-      <span class="val" id="wheel_rotation_radians">--</span></div>
-    <div class="row"><span class="lbl">Slip angle</span>
-      <span class="val" id="filler_float_fb">--</span></div>
-    <div class="row"><span class="lbl">Sway (lat)</span>
-      <span class="val" id="sway">--</span></div>
-    <div class="row"><span class="lbl">Heave (vert)</span>
-      <span class="val" id="heave">--</span></div>
-    <div class="row"><span class="lbl">Surge (lon)</span>
-      <span class="val" id="surge">--</span></div>
+  <div id="badges">
+    <span class="badge" id="tcs-badge">TCS</span>
+    <span class="badge" id="asm-badge">ASM</span>
+    <span class="badge" id="rev-badge">REV</span>
+    <span id="fuel-val"><span class="lbl">Fuel</span><span id="fuel_pct">--%</span></span>
   </div>
 
-  <!-- ── Filtered (Heartbeat ~) ───────────────────────────── -->
-  <div class="card hidden" id="card-filtered">
-    <h2>Filtered (Heartbeat ~)</h2>
-    <div class="row"><span class="lbl">Throttle filt</span>
-      <span class="val active" id="throttle_filtered_pct">--%</span></div>
-    <div class="row"><span class="lbl">Brake filt</span>
-      <span class="val warn" id="brake_filtered_pct">--%</span></div>
-    <div class="row"><span class="lbl">Energy recovery</span>
-      <span class="val" id="energy_recovery">--</span></div>
-  </div>
-
-  <!-- ── Status ───────────────────────────────────────────── -->
-  <div class="card" id="card-status">
-    <h2>Status</h2>
-    <div class="row"><span class="lbl">TCS</span>
-      <span class="val" id="tcs_active">--</span></div>
-    <div class="row"><span class="lbl">ASM</span>
-      <span class="val" id="asm_active">--</span></div>
-    <div class="row"><span class="lbl">Rev limit</span>
-      <span class="val" id="rev_limit">--</span></div>
-    <div class="row"><span class="lbl">Shift (RPM)</span>
-      <span class="val"><span id="min_alert_rpm">----</span> – <span id="max_alert_rpm">----</span></span></div>
-    <div class="row"><span class="lbl">Hand brake</span>
-      <span class="val" id="hand_brake_active">--</span></div>
-    <div class="row"><span class="lbl">Car code</span>
-      <span class="val" id="car_code">--</span></div>
-  </div>
-
-  <!-- ── Position ─────────────────────────────────────────── -->
-  <div class="card" id="card-position">
-    <h2>Position</h2>
-    <div class="row"><span class="lbl">X / Y / Z</span>
-      <span class="val" style="font-size:0.95rem">
-        <span id="position_x">--</span>,
-        <span id="position_y">--</span>,
-        <span id="position_z">--</span></span></div>
-    <div class="row"><span class="lbl">Vel X / Y / Z</span>
-      <span class="val" style="font-size:0.95rem">
-        <span id="velocity_x">--</span>,
-        <span id="velocity_y">--</span>,
-        <span id="velocity_z">--</span></span></div>
-    <div class="row"><span class="lbl">Road plane dist</span>
-      <span class="val" id="road_plane_dist">--</span></div>
-  </div>
-
-  <!-- ── Race ─────────────────────────────────────────────── -->
-  <div class="card" id="card-race">
-    <h2>Race</h2>
-    <div class="row"><span class="lbl">Start pos / Cars</span>
-      <span class="val"><span id="race_start_pos">--</span> / <span id="total_cars">--</span></span></div>
-    <div class="row"><span class="lbl">Time of day</span>
-      <span class="val" id="time_of_day_ms">--</span></div>
-    <div class="row"><span class="lbl">Heartbeat</span>
-      <span class="val" id="heartbeat_type">--</span></div>
+  <div id="tires">
+    <div class="tire"><span class="tire-pos">FL</span><span class="tire-temp" id="tfl">--°</span></div>
+    <div class="tire"><span class="tire-pos">FR</span><span class="tire-temp" id="tfr">--°</span></div>
+    <div class="tire"><span class="tire-pos">RL</span><span class="tire-temp" id="trl">--°</span></div>
+    <div class="tire"><span class="tire-pos">RR</span><span class="tire-temp" id="trr">--°</span></div>
   </div>
 
 </div>
+
+<!-- Secondary details overlay -->
+<div id="secondary">
+  <button id="sec-close" onclick="toggleSecondary()">✕ Close</button>
+  <div class="sec-grid">
+
+    <div class="sec-card">
+      <h3>Thermal</h3>
+      <div class="sec-row"><span class="sec-lbl">Oil temp</span><span class="sec-val" id="d-oil_temp">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Oil pressure</span><span class="sec-val" id="d-oil_pressure">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Water temp</span><span class="sec-val" id="d-water_temp">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Boost</span><span class="sec-val" id="d-boost_pressure">--</span></div>
+    </div>
+
+    <div class="sec-card">
+      <h3>Suspension (mm)</h3>
+      <div class="sec-row"><span class="sec-lbl">FL / FR</span>
+        <span class="sec-val"><span id="d-sus-fl">--</span> / <span id="d-sus-fr">--</span></span></div>
+      <div class="sec-row"><span class="sec-lbl">RL / RR</span>
+        <span class="sec-val"><span id="d-sus-rl">--</span> / <span id="d-sus-rr">--</span></span></div>
+    </div>
+
+    <div class="sec-card">
+      <h3>Race</h3>
+      <div class="sec-row"><span class="sec-lbl">Suggested gear</span><span class="sec-val" id="d-suggested_gear">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Start pos / Cars</span>
+        <span class="sec-val"><span id="d-race_start_pos">--</span> / <span id="d-total_cars">--</span></span></div>
+      <div class="sec-row"><span class="sec-lbl">Car code</span><span class="sec-val" id="d-car_code">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Heartbeat</span><span class="sec-val" id="d-heartbeat_type">--</span></div>
+    </div>
+
+    <div class="sec-card">
+      <h3>Position</h3>
+      <div class="sec-row"><span class="sec-lbl">X / Y / Z</span>
+        <span class="sec-val" style="font-size:0.75rem">
+          <span id="d-px">--</span>, <span id="d-py">--</span>, <span id="d-pz">--</span>
+        </span></div>
+      <div class="sec-row"><span class="sec-lbl">Road plane dist</span><span class="sec-val" id="d-road_plane_dist">--</span></div>
+    </div>
+
+    <div class="sec-card hidden" id="d-card-motion">
+      <h3>Motion (Heartbeat B)</h3>
+      <div class="sec-row"><span class="sec-lbl">Steering (rad)</span><span class="sec-val" id="d-steering">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Slip angle</span><span class="sec-val" id="d-slip">--</span></div>
+      <div class="sec-row"><span class="sec-lbl">Sway / Heave / Surge</span>
+        <span class="sec-val"><span id="d-sway">--</span> / <span id="d-heave">--</span> / <span id="d-surge">--</span></span></div>
+    </div>
+
+    <div class="sec-card hidden" id="d-card-filtered">
+      <h3>Filtered (Heartbeat ~)</h3>
+      <div class="sec-row"><span class="sec-lbl">Throttle filt</span><span class="sec-val" id="d-thr-filt">--%</span></div>
+      <div class="sec-row"><span class="sec-lbl">Brake filt</span><span class="sec-val" id="d-brk-filt">--%</span></div>
+      <div class="sec-row"><span class="sec-lbl">Energy recovery</span><span class="sec-val" id="d-energy">--</span></div>
+    </div>
+
+  </div>
+</div>
+
 <script>
   let latest = {};
   let retryDelay = 1000;
   const maxDelay = 30000;
 
-  // Lap counter reset: detect cars_on_track false→true and store an offset
-  // so the displayed lap always starts from 1 at track entry.
-  let prevCarsOnTrack = false;
-  let lapOffset = 0;
+  // ── Lap timer ──────────────────────────────────────────────
+  // GT7 doesn't broadcast current_lap_time_ms — compute from wall clock.
+  // Reset on cars_on_track false→true, or on current_lap increment.
+  let prevOnTrack = false;
+  let prevLap     = null;
+  let lapOffset   = 0;
+  let lapStartTs  = null;
 
+  // ── Shift bar ─────────────────────────────────────────────
+  // 12 segments: 0-6 green, 7-9 amber, 10-11 red
+  const SEG_COLORS = ['grn','grn','grn','grn','grn','grn','grn','amb','amb','amb','red','red'];
+  const segs = Array.from({length: 12}, (_, i) => document.getElementById(`s${i}`));
+
+  function updateShiftBar(rpm, lo, hi) {
+    const overRev = rpm >= hi;
+    const ratio   = hi > lo ? (rpm - lo) / (hi - lo) : 0;
+    const filled  = Math.round(Math.max(0, Math.min(1, ratio)) * 12);
+    segs.forEach((s, i) => {
+      if (!lo || !hi || hi <= lo) { s.className = 'seg'; return; }
+      if (overRev) { s.className = 'seg red flash'; }
+      else         { s.className = i < filled ? `seg ${SEG_COLORS[i]}` : 'seg'; }
+    });
+  }
+
+  // ── Tire temp → color ─────────────────────────────────────
+  function tireTempColor(t) {
+    if (t == null) return '#2a2a2a';
+    if (t < 50)   return '#44f';   // cold: blue
+    if (t < 70)   return '#4af';   // warming: cyan
+    if (t < 85)   return '#4f4';   // optimal: green
+    if (t < 100)  return '#fa4';   // hot: amber
+    return '#f44';                 // overheating: red
+  }
+
+  // ── Formatting ────────────────────────────────────────────
+  function fmtMs(ms) {
+    if (ms == null || ms === -1) return '--:--.---';
+    const t = Math.max(0, ms | 0);
+    const m = (t / 60000) | 0;
+    const s = ((t % 60000) / 1000) | 0;
+    const f = t % 1000;
+    return `${m}:${String(s).padStart(2,'0')}.${String(f).padStart(3,'0')}`;
+  }
+
+  function fmtDelta(ms) {
+    const sign = ms <= 0 ? '−' : '+';
+    const abs  = Math.abs(ms);
+    const s    = (abs / 1000) | 0;
+    const cs   = ((abs % 1000) / 10) | 0;   // centiseconds
+    return `${sign}${s}.${String(cs).padStart(2,'0')}`;
+  }
+
+  function set(id, v, fb = '--') {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (v == null) ? fb : v;
+  }
+
+  function toggleSecondary() {
+    document.getElementById('secondary').classList.toggle('open');
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/ws`);
-    const statusEl = document.getElementById('status');
-
-    ws.onopen = () => {
-      statusEl.textContent = '● Connected';
-      statusEl.className = 'connected';
-      retryDelay = 1000;
-    };
+    const ws    = new WebSocket(`${proto}//${location.host}/ws`);
+    const sEl   = document.getElementById('status');
+    ws.onopen    = () => { sEl.textContent = '● Connected'; sEl.className = 'connected'; retryDelay = 1000; };
     ws.onmessage = e => { latest = JSON.parse(e.data); };
-    ws.onclose = () => {
-      statusEl.textContent = `● Reconnecting (${(retryDelay / 1000).toFixed(0)}s)…`;
-      statusEl.className = 'disconnected';
+    ws.onclose   = () => {
+      sEl.textContent = `● Reconnecting (${(retryDelay/1000)|0}s)…`;
+      sEl.className   = 'disconnected';
       setTimeout(() => { retryDelay = Math.min(retryDelay * 2, maxDelay); connect(); }, retryDelay);
     };
   }
 
-  function fmtMs(ms) {
-    if (ms === null || ms === undefined || ms === -1) return '--:--.---';
-    const t = Math.max(0, Math.floor(ms));
-    const m = Math.floor(t / 60000);
-    const s = Math.floor((t % 60000) / 1000);
-    const f = t % 1000;
-    return `${m}:${String(s).padStart(2, '0')}.${String(f).padStart(3, '0')}`;
-  }
-
-  function fmtBool(v) { return v ? 'YES' : 'no'; }
-
-  function set(id, v, fallback = '--') {
-    const el = document.getElementById(id);
-    if (el) el.textContent = (v === null || v === undefined) ? fallback : v;
-  }
-
+  // ── Render loop ───────────────────────────────────────────
   function render() {
     const d = latest;
     if (d.speed_mps !== undefined) {
-      // Lap offset: reset displayed lap to 1 each time car goes on track
       const onTrack = !!d.cars_on_track;
-      if (onTrack && !prevCarsOnTrack) lapOffset = (d.current_lap ?? 1) - 1;
-      prevCarsOnTrack = onTrack;
+
+      // Lap timer reset logic
+      if (onTrack && !prevOnTrack) {
+        // Went on track: reset offset and timer
+        lapOffset  = (d.current_lap ?? 1) - 1;
+        lapStartTs = Date.now();
+        prevLap    = d.current_lap;
+      } else if (onTrack && d.current_lap !== prevLap && prevLap !== null) {
+        // Lap incremented: reset timer for new lap
+        lapStartTs = Date.now();
+        prevLap    = d.current_lap;
+      } else if (onTrack && prevLap === null) {
+        lapStartTs = Date.now();
+        prevLap    = d.current_lap;
+      }
+      if (!onTrack) { lapStartTs = null; prevLap = null; }
+      prevOnTrack = onTrack;
+
       const displayLap = onTrack ? Math.max(1, (d.current_lap ?? 1) - lapOffset) : '--';
+      const runningMs  = (onTrack && lapStartTs) ? Date.now() - lapStartTs : null;
+      const bestMs     = (d.best_lap_time_ms != null && d.best_lap_time_ms !== -1) ? d.best_lap_time_ms : null;
+      const deltaMs    = (runningMs != null && bestMs != null) ? runningMs - bestMs : null;
+
+      // Shift bar
+      updateShiftBar(d.engine_rpm ?? 0, d.min_alert_rpm, d.max_alert_rpm);
+
+      // Instruments
+      set('speed_kph',    (d.speed_mps * 3.6).toFixed(0));
+      set('engine_rpm',   d.engine_rpm?.toFixed(0));
+      set('current_gear', d.current_gear === 0 ? 'R' : d.current_gear >= 15 ? 'N' : d.current_gear);
 
       // Lap
-      set('current_lap', displayLap);
-      set('total_laps', d.total_laps);
+      set('current_lap',   displayLap);
+      set('total_laps',    d.total_laps);
+      set('running-time',  fmtMs(runningMs));
       set('last_lap_time', fmtMs(d.last_lap_time_ms));
       set('best_lap_time', fmtMs(d.best_lap_time_ms));
-      set('cars_on_track', fmtBool(d.cars_on_track));
 
-      // Engine
-      set('speed_kph', (d.speed_mps * 3.6).toFixed(1) + ' km/h');
-      set('engine_rpm', d.engine_rpm?.toFixed(0));
-      set('current_gear', d.current_gear === 0 ? 'R' : (d.current_gear >= 15 ? 'N' : d.current_gear));
-      set('suggested_gear', (d.suggested_gear >= 15 || !d.suggested_gear) ? '--' : d.suggested_gear);
-      set('throttle_pct', ((d.throttle ?? 0) / 255 * 100).toFixed(0) + '%');
-      set('brake_pct', ((d.brake ?? 0) / 255 * 100).toFixed(0) + '%');
-      set('boost_pressure', d.boost_pressure?.toFixed(2));
+      const dEl = document.getElementById('lap-delta');
+      if (deltaMs != null) {
+        dEl.textContent = fmtDelta(deltaMs);
+        dEl.className   = deltaMs <= 0 ? 'ahead' : 'behind';
+      } else {
+        dEl.textContent = '--';
+        dEl.className   = 'none';
+      }
+
+      // Pedals
+      const tPct = (d.throttle ?? 0) / 255 * 100;
+      const bPct = (d.brake    ?? 0) / 255 * 100;
+      document.getElementById('t-fill').style.width = tPct + '%';
+      document.getElementById('b-fill').style.width = bPct + '%';
+      set('t-pct', tPct.toFixed(0) + '%');
+      set('b-pct', bPct.toFixed(0) + '%');
+
+      // Badges
+      document.getElementById('tcs-badge').className = 'badge' + (d.tcs_active  ? ' on' : '');
+      document.getElementById('asm-badge').className = 'badge' + (d.asm_active  ? ' on' : '');
+      document.getElementById('rev-badge').className = 'badge' + (d.rev_limit   ? ' on' : '');
+
+      // Fuel
       set('fuel_pct', d.fuel_capacity > 0
-        ? ((d.fuel_level / d.fuel_capacity) * 100).toFixed(0) + '%' : '--');
+          ? ((d.fuel_level / d.fuel_capacity) * 100).toFixed(0) + '%' : '--%');
 
-      // Tires
-      set('tire_fl_temp', d.tire_fl_temp?.toFixed(1));
-      set('tire_fr_temp', d.tire_fr_temp?.toFixed(1));
-      set('tire_rl_temp', d.tire_rl_temp?.toFixed(1));
-      set('tire_rr_temp', d.tire_rr_temp?.toFixed(1));
-      set('tire_fl_sus_height', d.tire_fl_sus_height?.toFixed(1));
-      set('tire_fr_sus_height', d.tire_fr_sus_height?.toFixed(1));
-      set('tire_rl_sus_height', d.tire_rl_sus_height?.toFixed(1));
-      set('tire_rr_sus_height', d.tire_rr_sus_height?.toFixed(1));
+      // Tire temps (color-coded)
+      [['fl','tfl'],['fr','tfr'],['rl','trl'],['rr','trr']].forEach(([k, id]) => {
+        const t  = d[`tire_${k}_temp`];
+        const el = document.getElementById(id);
+        if (el) {
+          el.textContent = t != null ? t.toFixed(0) + '°' : '--°';
+          el.style.color = tireTempColor(t);
+        }
+      });
 
-      // Thermal
-      set('oil_temp', d.oil_temp?.toFixed(1) + ' °C');
-      set('oil_pressure', d.oil_pressure?.toFixed(2));
-      set('water_temp', d.water_temp?.toFixed(1) + ' °C');
+      // ── Secondary panel ──────────────────────────────────
+      set('d-oil_temp',       d.oil_temp?.toFixed(1) + ' °C');
+      set('d-oil_pressure',   d.oil_pressure?.toFixed(2));
+      set('d-water_temp',     d.water_temp?.toFixed(1) + ' °C');
+      set('d-boost_pressure', d.boost_pressure?.toFixed(2));
+      set('d-sus-fl', d.tire_fl_sus_height?.toFixed(1));
+      set('d-sus-fr', d.tire_fr_sus_height?.toFixed(1));
+      set('d-sus-rl', d.tire_rl_sus_height?.toFixed(1));
+      set('d-sus-rr', d.tire_rr_sus_height?.toFixed(1));
+      set('d-suggested_gear', (d.suggested_gear >= 15 || !d.suggested_gear) ? '--' : d.suggested_gear);
+      set('d-race_start_pos', d.race_start_pos);
+      set('d-total_cars',     d.total_cars);
+      set('d-car_code',       d.car_code);
+      set('d-heartbeat_type', d.heartbeat_type);
+      set('d-px',  d.position_x?.toFixed(1));
+      set('d-py',  d.position_y?.toFixed(1));
+      set('d-pz',  d.position_z?.toFixed(1));
+      set('d-road_plane_dist', d.road_plane_dist?.toFixed(3));
 
-      // Motion (B only)
       const isB = d.heartbeat_type === 'B';
-      document.getElementById('card-motion').classList.toggle('hidden', !isB);
+      document.getElementById('d-card-motion').classList.toggle('hidden', !isB);
       if (isB) {
-        set('wheel_rotation_radians', d.wheel_rotation_radians?.toFixed(3));
-        set('filler_float_fb', d.filler_float_fb?.toFixed(3));
-        set('sway', d.sway?.toFixed(3));
-        set('heave', d.heave?.toFixed(3));
-        set('surge', d.surge?.toFixed(3));
+        set('d-steering', d.wheel_rotation_radians?.toFixed(3));
+        set('d-slip',     d.filler_float_fb?.toFixed(3));
+        set('d-sway',     d.sway?.toFixed(3));
+        set('d-heave',    d.heave?.toFixed(3));
+        set('d-surge',    d.surge?.toFixed(3));
       }
 
-      // Filtered (~ only)
       const isTilde = d.heartbeat_type === '~';
-      document.getElementById('card-filtered').classList.toggle('hidden', !isTilde);
+      document.getElementById('d-card-filtered').classList.toggle('hidden', !isTilde);
       if (isTilde) {
-        set('throttle_filtered_pct', ((d.throttle_filtered ?? 0) / 255 * 100).toFixed(0) + '%');
-        set('brake_filtered_pct', ((d.brake_filtered ?? 0) / 255 * 100).toFixed(0) + '%');
-        set('energy_recovery', d.energy_recovery?.toFixed(3));
+        set('d-thr-filt', ((d.throttle_filtered ?? 0) / 255 * 100).toFixed(0) + '%');
+        set('d-brk-filt', ((d.brake_filtered    ?? 0) / 255 * 100).toFixed(0) + '%');
+        set('d-energy',   d.energy_recovery?.toFixed(3));
       }
-
-      // Status
-      set('tcs_active', fmtBool(d.tcs_active));
-      set('asm_active', fmtBool(d.asm_active));
-      set('rev_limit', fmtBool(d.rev_limit));
-      set('min_alert_rpm', d.min_alert_rpm?.toFixed(0));
-      set('max_alert_rpm', d.max_alert_rpm?.toFixed(0));
-      set('hand_brake_active', fmtBool(d.hand_brake_active));
-      set('car_code', d.car_code);
-
-      // Position
-      set('position_x', d.position_x?.toFixed(1));
-      set('position_y', d.position_y?.toFixed(1));
-      set('position_z', d.position_z?.toFixed(1));
-      set('velocity_x', d.velocity_x?.toFixed(2));
-      set('velocity_y', d.velocity_y?.toFixed(2));
-      set('velocity_z', d.velocity_z?.toFixed(2));
-      set('road_plane_dist', d.road_plane_dist?.toFixed(3));
-
-      // Race
-      set('race_start_pos', d.race_start_pos);
-      set('total_cars', d.total_cars);
-      set('time_of_day_ms', fmtMs(d.time_of_day_ms));
-      set('heartbeat_type', d.heartbeat_type);
     }
     requestAnimationFrame(render);
   }
