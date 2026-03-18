@@ -202,14 +202,15 @@ network interface — no host-side install needed.
 
 ### Phase 3
 
-- [ ] Lap list shows all recorded laps with lap time and car code
-- [ ] Selecting one lap renders all trace channels with distance as x-axis
-- [ ] Selecting two laps renders an overlay with a time delta (gap) trace
-- [ ] Synchronized crosshair: hovering one chart highlights the same distance on all charts
-- [ ] Track map renders `position_x` vs `position_z`, color-coded by speed;
+- [x] Lap list shows all recorded laps with lap time and car code
+- [x] Selecting one lap renders all trace channels with distance as x-axis
+- [x] Selecting two laps renders an overlay with a time delta (gap) trace
+- [x] Synchronized crosshair: hovering one chart highlights the same distance on all charts
+- [x] Track map renders `position_x` vs `position_z`, color-coded by speed;
       two-lap overlay in distinct colors
-- [ ] Distance channel is computed from `current_lap_time_ms`
-      (not wall-clock frame count) to avoid drift
+- [x] Distance computed from wall-clock `ts` per frame (GT7 does not broadcast
+      current lap time; `ts` is set server-side on frame receipt and is accurate
+      to within one frame interval at ~60 Hz; dt > 0.1 s frames are skipped)
 
 ## Phase 3 — Analysis Dashboard
 
@@ -300,7 +301,7 @@ No npm, no build step. All dependencies loaded from CDN in `index.html`.
 | --- | --- | --- |
 | 1 | Foundation: telemetry connection, Docker, packaging | ✅ Done |
 | 2 | Recording: persist full telemetry per lap to SQLite (on `on_lap_change`); minimal live view (speed, RPM, gear, lap time) via WebSocket | ✅ Done |
-| 3 | Analysis dashboard: REST API for lap/frame data; distance-based trace charts; time delta graph; synchronized crosshair; color-coded track map | 📋 Planned |
+| 3 | Analysis dashboard: REST API for lap/frame data; distance-based trace charts; time delta graph; synchronized crosshair; color-coded track map | ✅ Done |
 | 4 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
 
 ## References
