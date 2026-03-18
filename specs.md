@@ -22,7 +22,7 @@
 - [x] Connect to GT7 telemetry and stream data (Phase 1)
 - [x] Record telemetry per lap to persistent storage + minimal live view (Phase 2)
 - [x] Lap comparison dashboard: REST API for lap/frame data; distance-based trace charts; time delta; track map (Phase 3 — `/compare`)
-- [ ] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
+- [x] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
   (Phase 3 — HUD redesign)
 - [ ] Car setup tagging, setup-vs-setup comparison, lap export (Phase 4)
 
@@ -306,7 +306,7 @@ No npm, no build step. All dependencies loaded from CDN in `index.html`.
 | --- | --- | --- |
 | 1 | Foundation: telemetry connection, Docker, packaging | ✅ Done |
 | 2 | Recording: persist full telemetry per lap to SQLite (on `on_lap_change`); minimal live view (speed, RPM, gear, lap time) via WebSocket | ✅ Done |
-| 3 | Analysis dashboard (`/compare`): REST API, distance-based trace charts, delta graph, track map; HUD redesign: full live display + post-lap overlay | 🔄 In progress |
+| 3 | Analysis dashboard (`/compare`): REST API, distance-based trace charts, delta graph, track map; HUD redesign: full live display + post-lap overlay | ✅ Done |
 | 4 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
 
 ## References
