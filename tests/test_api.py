@@ -60,7 +60,7 @@ def test_get_frames_unknown_lap_returns_empty():
     assert r.json() == []
 
 
-def test_analysis_page_served():
-    r = TestClient(app).get("/analysis")
+def test_compare_page_served():
+    r = TestClient(app).get("/compare")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]

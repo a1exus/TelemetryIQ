@@ -85,9 +85,9 @@ async def get_frames(lap_id: int):
     return _add_distance(frames)
 
 
-@app.get("/analysis")
-async def analysis() -> FileResponse:
-    return FileResponse(_STATIC / "analysis.html")
+@app.get("/compare")
+async def compare() -> FileResponse:
+    return FileResponse(_STATIC / "compare.html")
 
 
 async def run_broadcaster(ws_queue: asyncio.Queue, clients: set[WebSocket]) -> None:
