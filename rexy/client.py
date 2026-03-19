@@ -137,35 +137,62 @@ def setup_client(
         frame["lap_started_at"] = recorder.current_lap_started_at
         loop.call_soon_threadsafe(raw_queue.put_nowait, frame)
 
+    def on_running_handler() -> None:
+        print("[gt-telem] event: on_running", flush=True)
+
+    def on_paused_handler() -> None:
+        print("[gt-telem] event: on_paused", flush=True)
+
     def on_at_track_handler() -> None:
+        print("[gt-telem] event: on_at_track", flush=True)
         # TT / practice: cars_on_track=False; current_lap not available here
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(recorder.reset_and_new_lap(1))
         )
 
+    def on_in_game_menu_handler() -> None:
+        print("[gt-telem] event: on_in_game_menu", flush=True)
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(recorder.close())
+        )
+
     def on_in_race_handler() -> None:
+        print("[gt-telem] event: on_in_race", flush=True)
         # Race start: cars_on_track=True, current_lap=0; on_lap_change(1) flushes it
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(recorder.reset_and_new_lap(0))
         )
 
+    def on_race_start_handler() -> None:
+        print("[gt-telem] event: on_race_start", flush=True)
+
+    def on_race_finish_handler() -> None:
+        print("[gt-telem] event: on_race_finish", flush=True)
+
     def on_race_end_handler() -> None:
+        print("[gt-telem] event: on_race_end", flush=True)
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(recorder.close())
         )
 
     def on_lap_change_handler(new_lap_number: int) -> None:
+        print(f"[gt-telem] event: on_lap_change → lap {new_lap_number}", flush=True)
         loop.call_soon_threadsafe(
             lambda n=new_lap_number: asyncio.create_task(recorder.flush_and_new_lap(n))
         )
 
     def on_track_detected_handler(track_id: int) -> None:
+        print(f"[gt-telem] event: on_track_detected → track_id={track_id}", flush=True)
         loop.call_soon_threadsafe(recorder.set_track_id, track_id)
 
+    game_events.on_running.append(on_running_handler)
+    game_events.on_paused.append(on_paused_handler)
     game_events.on_at_track.append(on_at_track_handler)
+    game_events.on_in_game_menu.append(on_in_game_menu_handler)
     game_events.on_in_race.append(on_in_race_handler)
     game_events.on_race_end.append(on_race_end_handler)
-    game_events.on_in_game_menu.append(on_race_end_handler)
+    race_events.on_race_start.append(on_race_start_handler)
+    race_events.on_race_finish.append(on_race_finish_handler)
     race_events.on_lap_change.append(on_lap_change_handler)
     race_events.on_track_detected.append(on_track_detected_handler)
     tc.register_callback(on_frame_handler)
