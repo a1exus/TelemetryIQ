@@ -61,10 +61,13 @@ async def _main() -> None:
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        tc.stop()
         dispatcher_task.cancel()
         broadcaster_task.cancel()
         await asyncio.gather(dispatcher_task, broadcaster_task, return_exceptions=True)
+        try:
+            await asyncio.wait_for(loop.run_in_executor(None, tc.stop), timeout=3.0)
+        except asyncio.TimeoutError:
+            pass
         await recorder.close()
         await repo.close()
 
