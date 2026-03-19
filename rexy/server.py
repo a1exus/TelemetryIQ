@@ -91,13 +91,16 @@ async def compare() -> FileResponse:
 
 
 async def run_broadcaster(ws_queue: asyncio.Queue, clients: set[WebSocket]) -> None:
-    while True:
-        frame = await ws_queue.get()
-        if clients:
-            await asyncio.gather(
-                *[_send_safe(ws, frame) for ws in list(clients)],
-                return_exceptions=True,
-            )
+    try:
+        while True:
+            frame = await ws_queue.get()
+            if clients:
+                await asyncio.gather(
+                    *[_send_safe(ws, frame) for ws in list(clients)],
+                    return_exceptions=True,
+                )
+    except asyncio.CancelledError:
+        pass
 
 
 async def _send_safe(ws: WebSocket, frame: dict) -> None:
