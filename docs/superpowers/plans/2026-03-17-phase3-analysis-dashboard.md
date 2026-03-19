@@ -1,0 +1,864 @@
+# Phase 3 — Analysis Dashboard Implementation Plan
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a lap analysis page at `/analysis` that lets you select one or two recorded laps and view distance-based trace charts, a time delta graph, and a color-coded track map — all from data already in SQLite.
+
+**Architecture:** Two new read methods on `TelemetryRepository` feed two new FastAPI REST endpoints. A `set_repo()` function in `server.py` wires the shared repo instance in at startup. `analysis.html` is a single static file fetched from `GET /analysis`; it uses Chart.js (CDN) for traces and raw Canvas for the track map.
+
+**Tech Stack:** Python/FastAPI (existing), aiosqlite (existing), Chart.js 4.4.4 + chartjs-plugin-zoom 2.0.1 (CDN), vanilla JS, Canvas API.
+
+**Design note — distance computation:** The spec originally planned to use `current_lap_time_ms` as the time base. GT7 does not broadcast this field — only `best_lap_time_ms` and `last_lap_time_ms` are in the telemetry stream, neither of which is the running lap timer. The frames table therefore has no `current_lap_time_ms` column. Distance is computed instead from the server-side `ts` timestamp (set immediately on frame receipt in `client.py`). A guard of `dt < 0.1 s` prevents pauses/menus from accumulating phantom distance. This is noted in `specs.md`.
+
+**Design note — Lateral G and Steering:** GT7's standard heartbeat does not provide a computed lateral-G channel. The `sway` field (Heartbeat B only) is the nearest proxy. `wheel_rotation_radians` (Heartbeat B only) provides steering. Both channels are included in the chart definitions but omitted from the canvas if the lap was recorded without Heartbeat B (the field will be `null`).
+
+---
+
+## File Map
+
+| Action | Path | Responsibility |
+|--------|------|----------------|
+| Modify | `rexy/repository.py` | Add `list_laps()` and `get_frames(lap_id)` read queries |
+| Modify | `rexy/server.py` | Add `set_repo()`, `_add_distance()`, `GET /laps`, `GET /laps/{id}/frames`, `GET /analysis` |
+| Modify | `rexy/__main__.py` | Call `set_repo(repo)` after repo is initialised |
+| Create | `rexy/static/analysis.html` | Full analysis page: lap list, trace charts, track map |
+| Modify | `tests/test_repository.py` | Tests for the two new read methods |
+| Create | `tests/test_api.py` | Tests for the two new REST endpoints |
+
+---
+
+## Task 1 — Repository read queries
+
+**Files:**
+- Modify: `rexy/repository.py` (append two methods before `close()`)
+- Modify: `tests/test_repository.py` (append test cases)
+
+- [ ] **Step 1 — Write failing tests**
+
+Append to `tests/test_repository.py`:
+
+```python
+@pytest.mark.asyncio
+async def test_list_laps_empty(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    laps = await repo.list_laps()
+    assert laps == []
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_list_laps_returns_complete_only(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    # Not yet complete — must not appear
+    assert await repo.list_laps() == []
+    await repo.complete_lap(lap_id, 90000, 90.0, is_complete=1, car_code=42)
+    laps = await repo.list_laps()
+    assert len(laps) == 1
+    assert laps[0]["lap_time_ms"] == 90000
+    assert laps[0]["car_code"] == 42
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_frames_ordered_by_seq(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    frames = [{"seq": i, "ts": float(i), "speed_mps": float(i), "packet_id": i}
+              for i in range(3)]
+    await repo.insert_frames(lap_id, frames)
+    result = await repo.get_frames(lap_id)
+    assert [r["seq"] for r in result] == [0, 1, 2]
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_frames_empty(tmp_path):
+    repo = TelemetryRepository(str(tmp_path / "t.db"))
+    await repo.init()
+    sid = await repo.insert_session(started_at=0.0)
+    lap_id = await repo.insert_lap(1, sid, None, started_at=0.0)
+    assert await repo.get_frames(lap_id) == []
+    await repo.close()
+```
+
+- [ ] **Step 2 — Run tests, confirm they fail**
+
+```bash
+source .venv/bin/activate
+pytest tests/test_repository.py::test_list_laps_empty \
+       tests/test_repository.py::test_list_laps_returns_complete_only \
+       tests/test_repository.py::test_get_frames_ordered_by_seq \
+       tests/test_repository.py::test_get_frames_empty -v
+```
+
+Expected: `AttributeError: 'TelemetryRepository' object has no attribute 'list_laps'`
+
+- [ ] **Step 3 — Implement the two methods**
+
+Append to `rexy/repository.py` before `close()`:
+
+```python
+async def list_laps(self) -> list[dict]:
+    """Return all complete laps, newest first."""
+    cur = await self.db.execute(
+        "SELECT id, lap_number, lap_time_ms, car_code, started_at "
+        "FROM laps WHERE is_complete = 1 ORDER BY started_at DESC"
+    )
+    rows = await cur.fetchall()
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in rows]
+
+async def get_frames(self, lap_id: int) -> list[dict]:
+    """Return all frames for a lap ordered by seq."""
+    cur = await self.db.execute(
+        "SELECT * FROM frames WHERE lap_id = ? ORDER BY seq", (lap_id,)
+    )
+    rows = await cur.fetchall()
+    if not rows:
+        return []
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in rows]
+```
+
+- [ ] **Step 4 — Run tests, confirm they pass**
+
+```bash
+pytest tests/test_repository.py -v
+```
+
+Expected: all repository tests pass.
+
+- [ ] **Step 5 — Commit**
+
+```bash
+git add rexy/repository.py tests/test_repository.py
+git commit -m "feat: add list_laps and get_frames read queries to repository"
+```
+
+---
+
+## Task 2 — REST endpoints + wire repo into server
+
+**Files:**
+- Modify: `rexy/server.py`
+- Modify: `rexy/__main__.py`
+- Create: `tests/test_api.py`
+
+- [ ] **Step 1 — Write failing tests**
+
+Create `tests/test_api.py`:
+
+```python
+"""Tests for Phase 3 REST API endpoints."""
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from rexy.server import app, set_repo
+
+
+class FakeRepo:
+    async def list_laps(self):
+        return [{"id": 1, "lap_number": 1, "lap_time_ms": 90000,
+                 "car_code": 42, "started_at": 0.0}]
+
+    async def get_frames(self, lap_id: int):
+        if lap_id != 1:
+            return []
+        return [
+            {"seq": 0, "ts": 0.0,   "speed_mps": 0.0},
+            {"seq": 1, "ts": 0.016, "speed_mps": 10.0},
+            {"seq": 2, "ts": 0.033, "speed_mps": 20.0},
+        ]
+
+
+@pytest.fixture(autouse=True)
+def inject_repo():
+    set_repo(FakeRepo())
+    yield
+    set_repo(None)
+
+
+def test_get_laps():
+    r = TestClient(app).get("/laps")
+    assert r.status_code == 200
+    laps = r.json()
+    assert len(laps) == 1
+    assert laps[0]["lap_time_ms"] == 90000
+
+
+def test_get_laps_503_before_repo_set():
+    set_repo(None)
+    r = TestClient(app).get("/laps")
+    assert r.status_code == 503
+
+
+def test_get_frames_adds_distance():
+    r = TestClient(app).get("/laps/1/frames")
+    assert r.status_code == 200
+    frames = r.json()
+    assert frames[0]["distance_m"] == 0.0
+    # frame 1: dt=0.016 s, speed=10 m/s → d ≈ 0.16 m
+    assert frames[1]["distance_m"] == pytest.approx(0.16, abs=0.01)
+    # frame 2: dt≈0.017 s, speed=20 m/s → cumulative ≈ 0.50 m
+    assert frames[2]["distance_m"] == pytest.approx(0.5, abs=0.02)
+
+
+def test_get_frames_unknown_lap_returns_empty():
+    r = TestClient(app).get("/laps/999/frames")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_analysis_page_served():
+    r = TestClient(app).get("/analysis")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+```
+
+- [ ] **Step 2 — Run tests, confirm they fail**
+
+```bash
+pytest tests/test_api.py -v
+```
+
+Expected: `ImportError` on `set_repo` — function doesn't exist yet.
+
+- [ ] **Step 3 — Add `set_repo`, `_add_distance`, and routes to `server.py`**
+
+Add to the imports block at the top of `rexy/server.py` (merge with existing `from typing import ...` if present, otherwise add after the standard library imports):
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rexy.repository import TelemetryRepository
+```
+
+Add after the imports and before `app = FastAPI()`:
+
+```python
+_repo: "TelemetryRepository | None" = None
+
+
+def set_repo(repo: "TelemetryRepository | None") -> None:
+    global _repo
+    _repo = repo
+
+
+def _add_distance(frames: list[dict]) -> list[dict]:
+    """Append distance_m to each frame using wall-clock ts as time base.
+
+    GT7 does not broadcast current_lap_time_ms; ts is set server-side on
+    frame receipt. Frames where dt > 0.1 s (pause, menu, load screen)
+    contribute zero distance to prevent teleportation artefacts.
+    """
+    result = []
+    dist = 0.0
+    prev_ts: float | None = None
+    for f in frames:
+        ts = f.get("ts")
+        if prev_ts is not None and ts is not None:
+            dt = ts - prev_ts
+            if 0.0 < dt < 0.1:
+                dist += (f.get("speed_mps") or 0.0) * dt
+        prev_ts = ts
+        result.append({**f, "distance_m": round(dist, 2)})
+    return result
+```
+
+Append the three new routes after the existing `/ws` route:
+
+```python
+@app.get("/laps")
+async def get_laps():
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    return await _repo.list_laps()
+
+
+@app.get("/laps/{lap_id}/frames")
+async def get_frames(lap_id: int):
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    frames = await _repo.get_frames(lap_id)
+    return _add_distance(frames)
+
+
+@app.get("/analysis")
+async def analysis() -> FileResponse:
+    return FileResponse(_STATIC / "analysis.html")
+```
+
+- [ ] **Step 4 — Create placeholder `rexy/static/analysis.html`**
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>TelemetryIQ — Analysis</title></head>
+<body><h1>Analysis</h1></body>
+</html>
+```
+
+- [ ] **Step 5 — Call `set_repo` in `__main__.py`**
+
+Change the import in `rexy/__main__.py`:
+```python
+from rexy.server import app, clients, run_broadcaster, set_repo
+```
+
+Add `set_repo(repo)` immediately after `await repo.init()`:
+```python
+    await repo.init()
+    set_repo(repo)
+```
+
+- [ ] **Step 6 — Run full test suite**
+
+```bash
+pytest tests/ -v
+```
+
+Expected: all tests pass (count shown in the final summary line).
+
+- [ ] **Step 7 — Commit**
+
+```bash
+git add rexy/server.py rexy/__main__.py rexy/static/analysis.html tests/test_api.py
+git commit -m "feat: add GET /laps and GET /laps/{id}/frames with distance; serve /analysis"
+```
+
+---
+
+## Task 3 — Analysis page: layout and lap list
+
+**Files:**
+- Modify: `rexy/static/analysis.html` (full replacement)
+
+No new Python code or tests — UI only.
+
+- [ ] **Step 1 — Write the full `analysis.html`**
+
+Design decisions:
+- `<aside id="sidebar">` — lap list from `GET /laps`, 200 px wide.
+- `<main id="content">` — charts + track map.
+- Lap items built with `createElement` + `textContent` (never `innerHTML` with server data).
+- `state = { lapA: null, lapB: null, cache: {} }` — mutated by A/B buttons, triggers `renderAll()`.
+- Chart.js CDN URLs pinned to exact versions for reproducibility.
+- `lerp()` guards: empty array early-return, upper-bound clamp.
+- `updateDeltaChart()` guards: empty frames early-return.
+- Six trace channels: Speed, Throttle, Brake, Gear, Lateral G (`sway`), Steering (`wheel_rotation_radians`). The last two are Heartbeat B only and will render as flat/empty if `null`.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TelemetryIQ — Analysis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; background: #0d0d0d;
+         color: #e0e0e0; font-size: 14px; height: 100vh;
+         display: flex; flex-direction: column; overflow: hidden; }
+
+  #topbar { display: flex; align-items: center; gap: 1rem;
+            padding: 0.5rem 1rem; border-bottom: 1px solid #222; flex-shrink: 0; }
+  #topbar h1 { font-size: 0.85rem; color: #555; letter-spacing: 0.1em; }
+  #topbar a  { font-size: 0.75rem; color: #4af; text-decoration: none; }
+  #topbar a:hover { color: #8cf; }
+
+  #main { display: flex; flex: 1; min-height: 0; }
+
+  /* sidebar */
+  #sidebar { width: 200px; flex-shrink: 0; border-right: 1px solid #222;
+             overflow-y: auto; padding: 0.5rem; }
+  .lap-item { background: #1a1a1a; border: 1px solid #252525;
+              border-radius: 4px; padding: 0.5rem; margin-bottom: 0.4rem; }
+  .lap-num  { font-size: 0.65rem; color: #555; text-transform: uppercase;
+              letter-spacing: 0.1em; }
+  .lap-time { font-size: 1.1rem; font-weight: bold; color: #4af; margin: 0.1rem 0; }
+  .lap-meta { font-size: 0.65rem; color: #555; margin-bottom: 0.35rem; }
+  .lap-btns { display: flex; gap: 0.3rem; }
+  .btn-a, .btn-b { flex: 1; padding: 0.2rem; border-radius: 3px; cursor: pointer;
+                   font-family: inherit; font-size: 0.7rem; font-weight: bold;
+                   letter-spacing: 0.05em; border: 1px solid; }
+  .btn-a        { background: #0a1a2a; border-color: #1a4a8a; color: #4af; }
+  .btn-a:hover  { background: #1a3a5a; }
+  .btn-a.active { background: #1a5aaa; border-color: #4af; color: #fff; }
+  .btn-b        { background: #2a1500; border-color: #8a4a00; color: #fa4; }
+  .btn-b:hover  { background: #3a2500; }
+  .btn-b.active { background: #aa6a00; border-color: #fa4; color: #fff; }
+  #sidebar-msg  { color: #555; font-size: 0.8rem; padding: 0.5rem; }
+
+  /* content */
+  #content { flex: 1; overflow-y: auto; padding: 0.75rem;
+             display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+  #legend { display: none; gap: 1.5rem; font-size: 0.75rem; flex-shrink: 0;
+            padding: 0.4rem 0.6rem; background: #111;
+            border: 1px solid #1e1e1e; border-radius: 4px; align-items: center; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%;
+             display: inline-block; margin-right: 0.35rem; }
+  #leg-hint { color: #555; margin-left: auto; font-style: italic; font-size: 0.7rem; }
+
+  .chart-wrap { background: #111; border: 1px solid #1e1e1e;
+                border-radius: 4px; padding: 0.5rem; }
+  .chart-lbl  { font-size: 0.65rem; text-transform: uppercase;
+                letter-spacing: 0.1em; color: #555; margin-bottom: 0.35rem; }
+
+  #map-wrap { background: #111; border: 1px solid #1e1e1e;
+              border-radius: 4px; padding: 0.5rem; flex-shrink: 0; }
+  #map-canvas { display: block; background: #0a0a0a; border-radius: 3px;
+                width: 100%; height: auto; }
+
+  #placeholder { color: #444; font-size: 0.9rem; padding: 2rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>TelemetryIQ — Analysis</h1>
+  <a href="/">&#8592; Live</a>
+</div>
+
+<div id="main">
+  <aside id="sidebar"><p id="sidebar-msg">Loading&#8230;</p></aside>
+  <main id="content">
+    <p id="placeholder">Select a lap from the list to begin.</p>
+
+    <div id="legend">
+      <span><span class="leg-dot" style="background:#4af"></span><span id="leg-a">Lap A</span></span>
+      <span><span class="leg-dot" style="background:#fa4"></span><span id="leg-b">Lap B</span></span>
+      <span id="leg-hint">Scroll to zoom &#183; drag to pan</span>
+    </div>
+
+    <div class="chart-wrap"><p class="chart-lbl">Speed (km/h)</p>
+      <canvas id="ch-speed" height="80"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Throttle (%)</p>
+      <canvas id="ch-throttle" height="60"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Brake (%)</p>
+      <canvas id="ch-brake" height="60"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Gear</p>
+      <canvas id="ch-gear" height="50"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Lateral G — sway (Heartbeat B only)</p>
+      <canvas id="ch-sway" height="50"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Steering rad (Heartbeat B only)</p>
+      <canvas id="ch-steer" height="50"></canvas></div>
+    <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; A minus B (s)</p>
+      <canvas id="ch-delta" height="60"></canvas></div>
+
+    <div id="map-wrap">
+      <p class="chart-lbl">Track Map &#8212; speed colormap (blue=slow &#8594; red=fast)</p>
+      <canvas id="map-canvas" width="800" height="500"></canvas>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+'use strict';
+
+const COL_A = '#4af';
+const COL_B = '#fa4';
+const state = { lapA: null, lapB: null, cache: {} };
+const charts = {};
+
+// ── Formatting ────────────────────────────────────────────────────────────────
+function fmtMs(ms) {
+  if (ms == null || ms === -1) return '--:--.---';
+  const t = Math.max(0, ms | 0);
+  const m = (t / 60000) | 0;
+  const s = ((t % 60000) / 1000) | 0;
+  const f = t % 1000;
+  return `${m}:${String(s).padStart(2,'0')}.${String(f).padStart(3,'0')}`;
+}
+
+// ── Lap list ──────────────────────────────────────────────────────────────────
+async function loadLapList() {
+  const r = await fetch('/laps');
+  const laps = await r.json();
+  const sidebar = document.getElementById('sidebar');
+  sidebar.replaceChildren();
+
+  if (!laps.length) {
+    const msg = document.createElement('p');
+    msg.id = 'sidebar-msg';
+    msg.textContent = 'No laps recorded yet.';
+    sidebar.appendChild(msg);
+    return;
+  }
+
+  laps.forEach(lap => {
+    const item = document.createElement('div');
+    item.className = 'lap-item';
+    item.dataset.id = String(lap.id);
+
+    const numEl = document.createElement('p');
+    numEl.className = 'lap-num';
+    numEl.textContent = `Lap ${lap.lap_number}`;
+
+    const timeEl = document.createElement('p');
+    timeEl.className = 'lap-time';
+    timeEl.textContent = fmtMs(lap.lap_time_ms);
+
+    const metaEl = document.createElement('p');
+    metaEl.className = 'lap-meta';
+    metaEl.textContent = `Car ${lap.car_code ?? '?'} \u00b7 ${new Date(lap.started_at * 1000).toLocaleString()}`;
+
+    const btns = document.createElement('div');
+    btns.className = 'lap-btns';
+
+    const btnA = document.createElement('button');
+    btnA.className = 'btn-a';
+    btnA.textContent = 'A';
+    btnA.addEventListener('click', () => selectLap(lap.id, 'A'));
+
+    const btnB = document.createElement('button');
+    btnB.className = 'btn-b';
+    btnB.textContent = 'B';
+    btnB.addEventListener('click', () => selectLap(lap.id, 'B'));
+
+    btns.appendChild(btnA);
+    btns.appendChild(btnB);
+    item.appendChild(numEl);
+    item.appendChild(timeEl);
+    item.appendChild(metaEl);
+    item.appendChild(btns);
+    sidebar.appendChild(item);
+  });
+}
+
+async function fetchFrames(lapId) {
+  if (state.cache[lapId]) return state.cache[lapId];
+  const r = await fetch(`/laps/${lapId}/frames`);
+  const frames = await r.json();
+  state.cache[lapId] = frames;
+  return frames;
+}
+
+async function selectLap(lapId, slot) {
+  const frames = await fetchFrames(lapId);
+  if (slot === 'A') state.lapA = { id: lapId, frames };
+  else              state.lapB = { id: lapId, frames };
+  updateButtonStates();
+  renderAll();
+}
+
+function updateButtonStates() {
+  document.querySelectorAll('.btn-a').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.btn-b').forEach(b => b.classList.remove('active'));
+  if (state.lapA) {
+    const el = document.querySelector(`.lap-item[data-id="${state.lapA.id}"] .btn-a`);
+    if (el) el.classList.add('active');
+  }
+  if (state.lapB) {
+    const el = document.querySelector(`.lap-item[data-id="${state.lapB.id}"] .btn-b`);
+    if (el) el.classList.add('active');
+  }
+}
+
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+const CHART_DEFS = [
+  { id: 'ch-speed',    fn: f => f.speed_mps * 3.6,           col: '#4af', yLbl: 'km/h' },
+  { id: 'ch-throttle', fn: f => f.throttle / 255 * 100,      col: '#4f4', yLbl: '%'    },
+  { id: 'ch-brake',    fn: f => f.brake    / 255 * 100,      col: '#f44', yLbl: '%'    },
+  { id: 'ch-gear',     fn: f => f.current_gear,               col: '#aaa', yLbl: ''     },
+  { id: 'ch-sway',     fn: f => f.sway,                       col: '#c8f', yLbl: 'g'    },
+  { id: 'ch-steer',    fn: f => f.wheel_rotation_radians,     col: '#fc8', yLbl: 'rad'  },
+];
+
+const BASE_OPTS = (yLbl) => ({
+  responsive: true, maintainAspectRatio: true, animation: false,
+  plugins: {
+    legend: { display: false },
+    zoom: {
+      zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+      pan:  { enabled: true, mode: 'x' },
+    },
+  },
+  scales: {
+    x: { type: 'linear', grid: { color: '#1e1e1e' },
+         ticks: { color: '#555', maxTicksLimit: 8 } },
+    y: { title: { display: !!yLbl, text: yLbl, color: '#555' },
+         grid: { color: '#1e1e1e' }, ticks: { color: '#555' } },
+  },
+  elements: { point: { radius: 0 }, line: { borderWidth: 1.5, tension: 0 } },
+});
+
+function mkDataset(frames, fn, color, label) {
+  return {
+    label,
+    data: frames.map(f => ({ x: f.distance_m, y: fn(f) })),
+    borderColor: color,
+    fill: false,
+    spanGaps: false,
+  };
+}
+
+function updateTraceCharts() {
+  CHART_DEFS.forEach(def => {
+    if (charts[def.id]) { charts[def.id].destroy(); }
+    charts[def.id] = new Chart(document.getElementById(def.id), {
+      type: 'line',
+      data: { datasets: [
+        ...(state.lapA ? [mkDataset(state.lapA.frames, def.fn, COL_A, 'A')] : []),
+        ...(state.lapB ? [mkDataset(state.lapB.frames, def.fn, COL_B, 'B')] : []),
+      ]},
+      options: BASE_OPTS(def.yLbl),
+    });
+  });
+}
+
+// ── Time delta ────────────────────────────────────────────────────────────────
+function lerp(frames, targetDist) {
+  if (!frames.length) return 0;
+  // Clamp to last frame if target exceeds track length
+  if (targetDist >= frames[frames.length - 1].distance_m) return frames[frames.length - 1].ts;
+  if (targetDist <= frames[0].distance_m) return frames[0].ts;
+
+  let lo = 0, hi = frames.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].distance_m <= targetDist) lo = mid; else hi = mid;
+  }
+  const a = frames[lo], b = frames[hi];
+  if (a.distance_m === b.distance_m) return a.ts;
+  const t = (targetDist - a.distance_m) / (b.distance_m - a.distance_m);
+  return a.ts + t * (b.ts - a.ts);
+}
+
+function updateDeltaChart() {
+  if (charts['ch-delta']) { charts['ch-delta'].destroy(); delete charts['ch-delta']; }
+  if (!state.lapA || !state.lapB) return;
+
+  const fA = state.lapA.frames, fB = state.lapB.frames;
+  if (!fA.length || !fB.length) return;
+
+  const maxDist = Math.min(fA[fA.length - 1].distance_m, fB[fB.length - 1].distance_m);
+  const t0A = fA[0].ts, t0B = fB[0].ts;
+  const pts = [];
+
+  for (const f of fA) {
+    if (f.distance_m > maxDist) break;
+    const delta = (f.ts - t0A) - (lerp(fB, f.distance_m) - t0B);
+    pts.push({ x: f.distance_m, y: parseFloat(delta.toFixed(3)) });
+  }
+
+  charts['ch-delta'] = new Chart(document.getElementById('ch-delta'), {
+    type: 'line',
+    data: { datasets: [{
+      data: pts,
+      segment: { borderColor: ctx => ctx.p0.parsed.y > 0 ? '#f44' : '#4f4' },
+      fill: { target: { value: 0 }, above: '#f4422a', below: '#2a4f22' },
+      label: 'delta',
+      tension: 0, borderWidth: 1.5,
+      pointRadius: 0,
+    }]},
+    options: BASE_OPTS('s'),
+  });
+}
+
+// ── Track map ─────────────────────────────────────────────────────────────────
+function drawTrackMap() {
+  const canvas = document.getElementById('map-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const allF = [...(state.lapA?.frames ?? []), ...(state.lapB?.frames ?? [])];
+  const xs   = allF.map(f => f.position_x).filter(v => v != null);
+  const zs   = allF.map(f => f.position_z).filter(v => v != null);
+  if (!xs.length) return;
+
+  const pad  = 24;
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const sc   = Math.min((W - pad*2) / (maxX - minX || 1),
+                        (H - pad*2) / (maxZ - minZ || 1));
+  const offX = pad + (W - pad*2 - (maxX - minX) * sc) / 2;
+  const offZ = pad + (H - pad*2 - (maxZ - minZ) * sc) / 2;
+  const proj = (x, z) => [offX + (x - minX) * sc, offZ + (z - minZ) * sc];
+
+  function speedColor(mps) {
+    const t = Math.min(1, (mps * 3.6) / 150);
+    return `rgb(${Math.round(t*255)},60,${Math.round((1-t)*255)})`;
+  }
+
+  function drawLap(frames, alpha) {
+    ctx.globalAlpha = alpha;
+    for (let i = 1; i < frames.length; i++) {
+      const f  = frames[i], fp = frames[i-1];
+      if (f.position_x == null || fp.position_x == null) continue;
+      const [x0,y0] = proj(fp.position_x, fp.position_z);
+      const [x1,y1] = proj(f.position_x,  f.position_z);
+      ctx.beginPath();
+      ctx.strokeStyle = speedColor(f.speed_mps ?? 0);
+      ctx.lineWidth   = 2;
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  if (state.lapA) drawLap(state.lapA.frames, state.lapB ? 0.75 : 1.0);
+  if (state.lapB) drawLap(state.lapB.frames, state.lapA ? 0.55 : 1.0);
+}
+
+// ── Synchronized crosshair ────────────────────────────────────────────────────
+function attachCrosshair() {
+  const all = Object.values(charts);
+  all.forEach(source => {
+    source.canvas.addEventListener('mousemove', e => {
+      const rect = source.canvas.getBoundingClientRect();
+      const xVal = source.scales.x?.getValueForPixel(e.clientX - rect.left);
+      if (xVal == null) return;
+      all.forEach(target => {
+        if (target === source || !target.scales.x) return;
+        const px = target.scales.x.getPixelForValue(xVal);
+        target.canvas.dispatchEvent(new MouseEvent('mousemove', {
+          clientX: target.canvas.getBoundingClientRect().left + px,
+          clientY: e.clientY, bubbles: true,
+        }));
+      });
+    });
+  });
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+function updateLegend() {
+  const el = document.getElementById('legend');
+  el.style.display = (state.lapA || state.lapB) ? 'flex' : 'none';
+  document.getElementById('leg-a').textContent =
+    state.lapA ? `A \u2014 ${fmtMs(state.lapA.frames.at(-1)?.last_lap_time_ms)}` : 'A (none)';
+  document.getElementById('leg-b').textContent =
+    state.lapB ? `B \u2014 ${fmtMs(state.lapB.frames.at(-1)?.last_lap_time_ms)}` : 'B (none)';
+}
+
+// ── renderAll ─────────────────────────────────────────────────────────────────
+function renderAll() {
+  document.getElementById('placeholder')?.remove();
+  updateLegend();
+  updateTraceCharts();
+  updateDeltaChart();
+  drawTrackMap();
+  setTimeout(attachCrosshair, 0);
+}
+
+loadLapList();
+</script>
+</body>
+</html>
+```
+
+- [ ] **Step 2 — Manually verify**
+
+```bash
+python -m rexy
+```
+
+Open `http://localhost:8000/analysis`. Verify:
+1. Sidebar shows recorded laps (run a lap or two in GT7 first).
+2. Click **A** on a lap — six trace charts appear.
+3. Click **B** on a second lap — each chart shows two overlaid traces.
+4. Time delta chart appears (requires both A and B).
+5. Track map draws a colored driving line.
+6. Hover a chart — crosshair updates across all charts.
+7. Scroll over a chart — X axis zooms.
+
+- [ ] **Step 3 — Commit**
+
+```bash
+git add rexy/static/analysis.html
+git commit -m "feat: full analysis dashboard — traces, delta, track map, crosshair"
+```
+
+---
+
+## Task 4 — Navigation link and spec update
+
+**Files:**
+- Modify: `rexy/static/index.html`
+- Modify: `specs.md`
+
+- [ ] **Step 1 — Add Analysis link to live HUD**
+
+In `rexy/static/index.html`, find the `#topbar` div. Add an anchor beside the existing `#details-btn`:
+
+```html
+<a href="/analysis" style="font-size:0.7rem;color:#4af;text-decoration:none;
+   padding:0.15rem 0.5rem;border:1px solid #1a4a8a;border-radius:3px;">Analysis &#8599;</a>
+```
+
+- [ ] **Step 2 — Update `specs.md`**
+
+Mark all Phase 3 success criteria complete. Replace:
+
+```markdown
+- [ ] Lap list shows all recorded laps with lap time and car code
+- [ ] Selecting one lap renders all trace channels with distance as x-axis
+- [ ] Selecting two laps renders an overlay with a time delta (gap) trace
+- [ ] Synchronized crosshair: hovering one chart highlights the same distance on all charts
+- [ ] Track map renders `position_x` vs `position_z`, color-coded by speed;
+      two-lap overlay in distinct colors
+- [ ] Distance channel is computed from `current_lap_time_ms`
+      (not wall-clock frame count) to avoid drift
+```
+
+With:
+
+```markdown
+- [x] Lap list shows all recorded laps with lap time and car code
+- [x] Selecting one lap renders all trace channels with distance as x-axis
+- [x] Selecting two laps renders an overlay with a time delta (gap) trace
+- [x] Synchronized crosshair: hovering one chart highlights the same distance on all charts
+- [x] Track map renders `position_x` vs `position_z`, color-coded by speed;
+      two-lap overlay in distinct colors
+- [x] Distance computed from wall-clock `ts` per frame (GT7 does not broadcast
+      current lap time; `ts` is set server-side on frame receipt and is accurate
+      to within one frame interval at ~60 Hz; dt > 0.1 s frames are skipped)
+```
+
+Also update the roadmap row:
+```markdown
+| 3 | Analysis dashboard: ... | ✅ Done |
+```
+
+- [ ] **Step 3 — Run full test suite**
+
+```bash
+pytest tests/ -v
+```
+
+Expected: all tests pass (verify the count in the summary line).
+
+- [ ] **Step 4 — Commit**
+
+```bash
+git add rexy/static/index.html specs.md
+git commit -m "docs: mark Phase 3 complete; add Analysis link to live HUD"
+```
+
+---
+
+## Done
+
+At the end of this plan:
+- `GET /laps` and `GET /laps/{id}/frames` serve lap data with computed `distance_m`
+- `/analysis` is a fully functional lap comparison dashboard
+- All tests pass
+- Phase 3 marked complete in `specs.md`
+
+Run `superpowers:finishing-a-development-branch` to merge.

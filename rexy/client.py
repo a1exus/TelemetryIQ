@@ -134,6 +134,7 @@ def setup_client(
         frame = telemetry_to_dict(t)
         frame["ts"] = time.time()
         frame["heartbeat_type"] = heartbeat_type
+        frame["lap_started_at"] = recorder.current_lap_started_at
         loop.call_soon_threadsafe(raw_queue.put_nowait, frame)
 
     def on_at_track_handler() -> None:

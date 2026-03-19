@@ -1,3 +1,152 @@
+# HUD Redesign Implementation Plan
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Redesign `index.html` into a full engineering display (all telemetry fields always visible + post-lap Chart.js overlay), and rename the analysis route from `/analysis` to `/compare`.
+
+**Architecture:** Pure front-end + route rename. No new Python endpoints, no changes to `repository.py`, `recorder.py`, `client.py`, or `__main__.py`. `server.py` changes one route. `index.html` is fully rewritten to split into a top zone (60%: live instruments) and bottom zone (40%: Chart.js last-vs-best-lap charts, populated after each lap transition via `GET /laps` + `GET /laps/{id}/frames`).
+
+**Tech Stack:** Python/FastAPI (existing), vanilla JS, Chart.js 4.4.4 (CDN). No npm, no build step.
+
+---
+
+## File Map
+
+| Action | Path | Responsibility |
+|--------|------|----------------|
+| Rename | `rexy/static/analysis.html` → `rexy/static/compare.html` | Analysis page served at `/compare` |
+| Modify | `rexy/server.py` | Route `GET /analysis` → `GET /compare`; serve `compare.html` |
+| Modify | `tests/test_api.py` | Update test to hit `/compare` |
+| Modify | `rexy/static/index.html` | Full HUD redesign — live fields + Chart.js bottom zone |
+| Modify | `specs.md` | Mark HUD redesign success criterion complete; update roadmap |
+
+---
+
+## Housekeeping: commit pending changes
+
+Before touching code, commit the uncommitted README and specs changes that already exist in the working tree. These track the split of Phase 3 into two sub-items (analysis dashboard done, HUD redesign in progress).
+
+- [ ] **Step 1 — Stage and commit**
+
+```bash
+git add README.md specs.md
+git commit -m "docs: split Phase 3 goal into analysis dashboard (done) and HUD redesign (in progress)"
+```
+
+---
+
+## Task 1 — Rename `/analysis` → `/compare`
+
+**Files:**
+- Rename: `rexy/static/analysis.html` → `rexy/static/compare.html`
+- Modify: `rexy/server.py:88-90`
+- Modify: `tests/test_api.py:63-66`
+
+- [ ] **Step 1 — Replace the failing test**
+
+In `tests/test_api.py`, **delete** `test_analysis_page_served` and **replace it** with `test_compare_page_served`. The file must not contain both functions after this step — the old function references `/analysis` which no longer exists after the route rename, and will fail.
+
+Old function to remove:
+```python
+def test_analysis_page_served():
+    r = TestClient(app).get("/analysis")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+```
+
+Replace with (in the same location at the bottom of the file):
+```python
+def test_compare_page_served():
+    r = TestClient(app).get("/compare")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+```
+
+- [ ] **Step 2 — Run test to confirm it fails**
+
+```bash
+source .venv/bin/activate
+pytest tests/test_api.py::test_compare_page_served -v
+```
+
+Expected: `FAILED` — `/compare` returns 404 because the route doesn't exist yet.
+
+- [ ] **Step 3 — Rename the HTML file**
+
+```bash
+git mv rexy/static/analysis.html rexy/static/compare.html
+```
+
+- [ ] **Step 4 — Update the route in `server.py`**
+
+Change `rexy/server.py` lines 88–90 from:
+```python
+@app.get("/analysis")
+async def analysis() -> FileResponse:
+    return FileResponse(_STATIC / "analysis.html")
+```
+To:
+```python
+@app.get("/compare")
+async def compare() -> FileResponse:
+    return FileResponse(_STATIC / "compare.html")
+```
+
+- [ ] **Step 5 — Run full test suite**
+
+```bash
+pytest tests/ -v
+```
+
+Expected: all tests pass including `test_compare_page_served`.
+
+- [ ] **Step 6 — Commit**
+
+```bash
+git add rexy/server.py tests/test_api.py rexy/static/compare.html
+git commit -m "feat: rename /analysis route to /compare; serve compare.html"
+```
+
+---
+
+## Task 2 — Redesign `index.html`
+
+**Files:**
+- Modify: `rexy/static/index.html` (full replacement)
+
+No Python code changes. No new tests — this is a pure UI rewrite.
+
+### Layout overview
+
+```
+#app (flex column, height: 100svh, overflow: hidden)
+├── #topbar          (flex-shrink: 0)  status + Compare link
+├── #top-zone        (flex: 0 0 60%)   all live telemetry fields
+│   ├── #shift-bar
+│   ├── #instruments  Speed | Gear | RPM
+│   ├── #lap-section  running time · delta · last · best
+│   ├── #pedals       T / B bars
+│   ├── #badges       TCS · ASM · REV · suggested gear · fuel
+│   ├── #tires        FL/FR/RL/RR temp + sus height
+│   └── #extra        thermal · car state · body motion (HB-B) · filtered (HB-~)
+└── #bottom-zone     (flex: 0 0 40%)   Chart.js post-lap overlay
+    ├── Chart 1: throttle% (green) + brake% (red) — last lap only
+    └── Chart 2: speed km/h — last lap (blue) + best lap (orange)
+```
+
+Chart logic:
+- Triggered on `d.current_lap` raw increment (before `lapOffset`)
+- `GET /laps` → if empty, skip silently (normal on race start before any complete lap)
+- Find `lastLap = laps[0]` (server returns newest first); `bestLap = min by lap_time_ms`
+- If same id: fetch frames once; else fetch in parallel
+- Chart instances created on first non-empty call; data swapped in-place on subsequent laps
+- Charts hidden behind placeholder until first data arrives
+
+- [ ] **Step 1 — Write the new `index.html`**
+
+Replace the entire contents of `rexy/static/index.html` with:
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -272,9 +421,10 @@ const maxDelay = 30000;
 
 // ── Lap timer ──────────────────────────────────────────────
 let prevOnTrack = false;
-let prevLap     = null;   // for lapOffset reset detection
+let prevLap     = null;   // for lap timer reset (lapOffset-adjusted)
 let prevRawLap  = null;   // raw d.current_lap — chart trigger, no offset applied
 let lapOffset   = 0;
+let lapStartTs  = null;
 
 // ── Chart instances ────────────────────────────────────────
 const charts = {};  // { tb: Chart|null, spd: Chart|null }
@@ -350,47 +500,41 @@ async function updateCharts() {
   if (!laps.length) return;  // normal on 0→1 race-start increment
 
   const lastLap = laps[0];  // server returns newest first
-  const bestLap = laps.reduce((b, l) => {
-    if (l.lap_time_ms == null) return b;
-    if (b.lap_time_ms == null) return l;
-    return l.lap_time_ms < b.lap_time_ms ? l : b;
-  }, laps[0]);
+  const bestLap = laps.reduce((b, l) => l.lap_time_ms < b.lap_time_ms ? l : b, laps[0]);
 
   let framesLast, framesBest;
-  try {
-    if (lastLap.id === bestLap.id) {
-      framesLast = framesBest = await fetch(`/laps/${lastLap.id}/frames`).then(r => r.json());
-    } else {
-      [framesLast, framesBest] = await Promise.all([
-        fetch(`/laps/${lastLap.id}/frames`).then(r => r.json()),
-        fetch(`/laps/${bestLap.id}/frames`).then(r => r.json()),
-      ]);
-    }
+  if (lastLap.id === bestLap.id) {
+    framesLast = framesBest = await fetch(`/laps/${lastLap.id}/frames`).then(r => r.json());
+  } else {
+    [framesLast, framesBest] = await Promise.all([
+      fetch(`/laps/${lastLap.id}/frames`).then(r => r.json()),
+      fetch(`/laps/${bestLap.id}/frames`).then(r => r.json()),
+    ]);
+  }
 
-    // Reveal charts, remove placeholder
-    document.getElementById('chart-placeholder')?.remove();
-    ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
-      document.getElementById(id).classList.remove('hidden'));
+  // Reveal charts, remove placeholder
+  document.getElementById('chart-placeholder')?.remove();
+  ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
+    document.getElementById(id).classList.remove('hidden'));
 
-    const tbDs = [
-      mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
-      mkDs(framesLast, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
-    ];
-    const spdDs = [
-      mkDs(framesLast, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
-      mkDs(framesBest, f => (f.speed_mps ?? 0) * 3.6, '#fa4'),
-    ];
+  const tbDs = [
+    mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
+    mkDs(framesLast, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
+  ];
+  const spdDs = [
+    mkDs(framesLast, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
+    mkDs(framesBest, f => (f.speed_mps ?? 0) * 3.6, '#fa4'),
+  ];
 
-    if (!charts.tb) {
-      charts.tb  = new Chart(document.getElementById('chart-tb'),
-        { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
-      charts.spd = new Chart(document.getElementById('chart-spd'),
-        { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
-    } else {
-      charts.tb.data.datasets  = tbDs;  charts.tb.update();
-      charts.spd.data.datasets = spdDs; charts.spd.update();
-    }
-  } catch { return; }
+  if (!charts.tb) {
+    charts.tb  = new Chart(document.getElementById('chart-tb'),
+      { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
+    charts.spd = new Chart(document.getElementById('chart-spd'),
+      { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
+  } else {
+    charts.tb.data.datasets  = tbDs;  charts.tb.update();
+    charts.spd.data.datasets = spdDs; charts.spd.update();
+  }
 }
 
 // ── WebSocket ──────────────────────────────────────────────
@@ -414,18 +558,21 @@ function render() {
   if (d.speed_mps !== undefined) {
     const onTrack = !!d.cars_on_track;
 
-    // Lap offset (display lap# in races where lap 0 = formation)
+    // Lap timer
     if (onTrack && !prevOnTrack) {
       lapOffset  = (d.current_lap ?? 1) - 1;
+      lapStartTs = Date.now();
       prevLap    = d.current_lap;
       prevRawLap = d.current_lap;
     } else if (onTrack && d.current_lap !== prevLap && prevLap !== null) {
+      lapStartTs = Date.now();
       prevLap    = d.current_lap;
     } else if (onTrack && prevLap === null) {
+      lapStartTs = Date.now();
       prevLap    = d.current_lap;
       prevRawLap = d.current_lap;
     }
-    if (!onTrack) { prevLap = null; prevRawLap = null; }
+    if (!onTrack) { lapStartTs = null; prevLap = null; prevRawLap = null; }
     prevOnTrack = onTrack;
 
     // Chart trigger: raw current_lap increment
@@ -435,8 +582,7 @@ function render() {
     }
 
     const displayLap = onTrack ? Math.max(1, (d.current_lap ?? 1) - lapOffset) : '--';
-    const runningMs  = (onTrack && d.lap_started_at != null)
-                       ? Date.now() - d.lap_started_at * 1000 : null;
+    const runningMs  = (onTrack && lapStartTs) ? Date.now() - lapStartTs : null;
     const bestMs     = (d.best_lap_time_ms != null && d.best_lap_time_ms !== -1)
                        ? d.best_lap_time_ms : null;
     const deltaMs    = (runningMs != null && bestMs != null) ? runningMs - bestMs : null;
@@ -539,3 +685,89 @@ requestAnimationFrame(render);
 </script>
 </body>
 </html>
+```
+
+- [ ] **Step 2 — Manual verification checklist**
+
+```bash
+source .venv/bin/activate
+python -m rexy
+```
+
+Open `http://localhost:8000`. Verify:
+
+1. Page fills viewport with no scrollbar at any reasonable window size.
+2. Top zone (~60%): shift bar, Speed/Gear/RPM, lap section, pedals, TCS/ASM/REV/fuel badges, tire temps with suspension heights, thermal+car-state cards.
+3. Bottom zone (~40%): shows "Waiting for lap data…" placeholder.
+4. "Compare ↗" link in topbar navigates to `/compare` (previously `/analysis`).
+5. "Details ▾" button is **gone** — no overlay anywhere on the page.
+6. After a lap completes in GT7: placeholder disappears; throttle/brake chart and speed chart appear.
+7. Speed chart shows two lines (blue = last lap, orange = best lap).
+8. Throttle/brake chart shows two lines (green = throttle, red = brake) for the last lap.
+9. After subsequent laps: charts update in-place with no flicker (no animation).
+10. With Heartbeat B: "Body motion" card appears with steering + sway/heave/surge.
+11. With Heartbeat ~: "Filtered" card appears with throttle_filtered/brake_filtered/energy_recovery.
+
+- [ ] **Step 3 — Commit**
+
+```bash
+git add rexy/static/index.html
+git commit -m "feat: redesign HUD — full engineering display with post-lap Chart.js overlay"
+```
+
+---
+
+## Task 3 — Update specs.md
+
+**Files:**
+- Modify: `specs.md`
+
+- [ ] **Step 1 — Mark HUD redesign complete in goals list**
+
+In `specs.md`, change:
+```markdown
+- [ ] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
+  (Phase 3 — HUD redesign)
+```
+To:
+```markdown
+- [x] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
+  (Phase 3 — HUD redesign)
+```
+
+- [ ] **Step 2 — Update roadmap row**
+
+Change:
+```markdown
+| 3 | Analysis dashboard (`/compare`): REST API, distance-based trace charts, delta graph, track map; HUD redesign: full live display + post-lap overlay | 🔄 In progress |
+```
+To:
+```markdown
+| 3 | Analysis dashboard (`/compare`): REST API, distance-based trace charts, delta graph, track map; HUD redesign: full live display + post-lap overlay | ✅ Done |
+```
+
+- [ ] **Step 3 — Run full test suite one last time**
+
+```bash
+pytest tests/ -v
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 4 — Commit**
+
+```bash
+git add specs.md
+git commit -m "docs: mark Phase 3 HUD redesign complete"
+```
+
+---
+
+## Done
+
+At the end of this plan:
+- `/compare` serves the lap analysis page (was `/analysis`)
+- `index.html` shows all telemetry fields without any overlay/toggle
+- Post-lap Chart.js charts appear in the bottom zone after each lap transition
+- All existing tests pass
+- Phase 3 marked fully complete in `specs.md`

@@ -22,6 +22,7 @@ class LapRecorder:
         self.state = State.IDLE
         self.current_lap_id: int | None = None
         self.current_track_id: int | None = None
+        self.current_lap_started_at: float | None = None
         self.lap_buffer: list[dict] = []
         self.seq: int = 0
 
@@ -43,8 +44,9 @@ class LapRecorder:
         async with self._lock:
             if self.state == State.RECORDING:
                 await self._flush_partial()
+            self.current_lap_started_at = time.time()
             self.current_lap_id = await self._repo.insert_lap(
-                lap_number, self._session_id, self.current_track_id, started_at=time.time()
+                lap_number, self._session_id, self.current_track_id, started_at=self.current_lap_started_at
             )
             self.lap_buffer = []
             self.seq = 0
@@ -67,8 +69,9 @@ class LapRecorder:
             await self._repo.complete_lap(
                 old_id, lap_time_ms, time.time(), 1, car_code=car
             )
+            self.current_lap_started_at = time.time()
             self.current_lap_id = await self._repo.insert_lap(
-                new_lap_number, self._session_id, self.current_track_id, started_at=time.time()
+                new_lap_number, self._session_id, self.current_track_id, started_at=self.current_lap_started_at
             )
 
     async def close(self) -> None:
