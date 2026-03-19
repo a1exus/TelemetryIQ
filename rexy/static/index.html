@@ -252,11 +252,11 @@
   <div id="bottom-zone">
     <p id="chart-placeholder">Waiting for lap data&#8230;</p>
     <div class="chart-wrap hidden" id="chart-tb-wrap">
-      <p class="chart-lbl">Throttle (green) / Brake (red) &#8212; % &#183; last lap</p>
+      <p class="chart-lbl" id="lbl-tb">Throttle (green) / Brake (red) &#8212; %</p>
       <canvas id="chart-tb"></canvas>
     </div>
     <div class="chart-wrap hidden" id="chart-spd-wrap">
-      <p class="chart-lbl">Speed &#8212; km/h &#183; blue = last &nbsp; orange = best</p>
+      <p class="chart-lbl" id="lbl-spd">Speed &#8212; km/h</p>
       <canvas id="chart-spd"></canvas>
     </div>
   </div>
@@ -278,6 +278,11 @@ let lapOffset   = 0;
 
 // ── Chart instances ────────────────────────────────────────
 const charts = {};  // { tb: Chart|null, spd: Chart|null }
+
+// ── Live frame accumulation ─────────────────────────────────
+let liveFrames = [];
+let liveDist   = 0;
+let liveTs     = null;
 
 // ── Shift bar ──────────────────────────────────────────────
 const SEG_COLORS = ['grn','grn','grn','grn','grn','grn','grn','amb','amb','amb','red','red'];
@@ -367,10 +372,12 @@ async function updateCharts() {
       ]);
     }
 
-    // Reveal charts, remove placeholder
+    // Reveal charts, remove placeholder, update labels
     document.getElementById('chart-placeholder')?.remove();
     ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
       document.getElementById(id).classList.remove('hidden'));
+    document.getElementById('lbl-tb').textContent  = 'Throttle (green) / Brake (red) \u2014 % \u00b7 last lap';
+    document.getElementById('lbl-spd').textContent = 'Speed \u2014 km/h \u00b7 blue\u202f=\u202flast \u00a0 orange\u202f=\u202fbest';
 
     const tbDs = [
       mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
@@ -393,6 +400,34 @@ async function updateCharts() {
   } catch { return; }
 }
 
+function drawLive() {
+  if (!liveFrames.length) return;
+  document.getElementById('chart-placeholder')?.remove();
+  ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
+    document.getElementById(id).classList.remove('hidden'));
+  const suffix = ' \u00b7 live';
+  document.getElementById('lbl-tb').textContent  = 'Throttle (green) / Brake (red) \u2014 %' + suffix;
+  document.getElementById('lbl-spd').textContent = 'Speed \u2014 km/h' + suffix;
+  const tbDs = [
+    mkDs(liveFrames, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
+    mkDs(liveFrames, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
+  ];
+  const spdDs = [
+    mkDs(liveFrames, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
+  ];
+  if (!charts.tb) {
+    charts.tb  = new Chart(document.getElementById('chart-tb'),
+      { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
+    charts.spd = new Chart(document.getElementById('chart-spd'),
+      { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
+  } else {
+    charts.tb.data.datasets  = tbDs;  charts.tb.update();
+    charts.spd.data.datasets = spdDs; charts.spd.update();
+  }
+}
+
+setInterval(drawLive, 1000);
+
 // ── WebSocket ──────────────────────────────────────────────
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -400,7 +435,19 @@ function connect() {
   const sEl   = document.getElementById('status');
   ws.onopen  = () => { sEl.textContent = '\u25cf Connected';
                        sEl.className = 'connected'; retryDelay = 1000; };
-  ws.onmessage = e => { latest = JSON.parse(e.data); };
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+    // Accumulate live frames with incrementally computed distance
+    if (d.cars_on_track && d.speed_mps != null) {
+      if (liveTs !== null && d.ts != null) {
+        const dt = d.ts - liveTs;
+        if (dt > 0 && dt < 0.1) liveDist += d.speed_mps * dt;
+      }
+      liveTs = d.ts ?? null;
+      liveFrames.push({ ...d, distance_m: Math.round(liveDist * 100) / 100 });
+    }
+    latest = d;
+  };
   ws.onclose   = () => {
     sEl.textContent = `\u25cf Reconnecting (${(retryDelay/1000)|0}s)\u2026`;
     sEl.className = 'disconnected';
@@ -428,9 +475,10 @@ function render() {
     if (!onTrack) { prevLap = null; prevRawLap = null; }
     prevOnTrack = onTrack;
 
-    // Chart trigger: raw current_lap increment
+    // Chart trigger: raw current_lap increment → flush live, load completed + best
     if (onTrack && prevRawLap !== null && d.current_lap !== prevRawLap) {
       prevRawLap = d.current_lap;
+      liveFrames = []; liveDist = 0; liveTs = null;
       updateCharts();
     }
 
