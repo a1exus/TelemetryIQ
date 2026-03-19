@@ -34,6 +34,17 @@ make up
 make logs
 ```
 
+## Web UI
+
+Once running, open **<http://localhost:8000>** in a browser.
+
+| URL | Description |
+| --- | --- |
+| `/` | Live engineering HUD — speed, RPM, gear, G-forces, throttle/brake, lap timer |
+| `/compare` | Lap comparison — select two recorded laps, overlay speed/throttle/brake/G traces, time-delta graph, track map |
+
+Laps are recorded automatically to `telemetry.db` (SQLite). The live timer is anchored to the server-side lap-start timestamp, so it survives browser refreshes and sleep/wake cycles.
+
 ## Configuration
 
 All configuration is via `.env`. See [`.env.example`](.env.example) for the full reference.
@@ -41,4 +52,4 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for the full
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PS_IP` | _(auto)_ | PlayStation IP address. Leave unset to use automatic discovery. |
-| `GT7_HEARTBEAT_TYPE` | `B` | Telemetry format sent by GT7. `A` = standard, `B` = standard + motion data (steering, sway, heave, surge), `~` = standard + filtered inputs + energy recovery. Only one type active per session. |
+| `GT7_HEARTBEAT_TYPE` | `B` | Telemetry format. `A` = standard, `B` = standard + motion data (steering, sway, heave, surge), `~` = standard + filtered inputs + energy recovery. One type active per session. |

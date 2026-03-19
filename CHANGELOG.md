@@ -2,14 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Week of 2026-03-19]
+
+### Added
+
+- Live engineering HUD: full-viewport driver display with speed, RPM, gear, throttle/brake bars,
+  G-force gauge, tyre temps, fuel, boost, and lap timer
+- Post-lap Chart.js overlay: speed, throttle, brake, and lateral-G traces rendered after
+  each lap completes
+- `/compare` lap comparison dashboard: distance-aligned multi-trace overlay, time-delta
+  graph, track map with crosshair sync; replaces the old `/analysis` route
+
+### Fixed
+
+- Lap timer anchored to server-recorded `lap_started_at` timestamp — survives browser refreshes
+  and sleep/wake reconnects without resetting to zero
+- Frame fetch errors and null `lap_time_ms` handled gracefully in the comparison dashboard
+
 ## [Week of 2026-03-16]
 
 ### Changed
 
-- Rethought product phases: recording (Phase 2) now precedes the analysis dashboard (Phase 3); setup comparison added as Phase 4
+- Rethought product phases: recording (Phase 2) now precedes the analysis dashboard
+  (Phase 3); setup comparison added as Phase 4
 - Removed lap recording from "out of scope" — it is now the core of Phase 2
-- `specs.md` is now the single source of truth for constraints and design decisions; no separate design documents
-- Updated `plan.md`, `tasks/`, `README.md`, `GEMINI.md`, and `CLAUDE.md` to reflect new phases and correct entrypoint (`python -m rexy`)
+- `specs.md` is now the single source of truth for constraints and design decisions;
+  no separate design documents
+- Updated `plan.md`, `tasks/`, `README.md`, `GEMINI.md`, and `CLAUDE.md` to reflect
+  new phases and correct entrypoint (`python -m rexy`)
 - Driving line (`position_x/y/z`) added to Phase 3 dashboard requirements
 
 ## [Week of 2026-03-15]
