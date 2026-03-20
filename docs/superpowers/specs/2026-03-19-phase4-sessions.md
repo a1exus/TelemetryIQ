@@ -33,7 +33,9 @@ ALTER TABLE sessions ADD COLUMN completed_at REAL;
 
 `user_version` bumped from 1 → 2. In `repository.py`:
 
-- `elif version == 1:` — run the three `ALTER TABLE` statements, commit, set `PRAGMA user_version = 2`
+- `elif version == 1:` — run the three `ALTER TABLE` statements, commit, then
+  `await self.db.execute("PRAGMA user_version = 2")` (literal, not a bind parameter —
+  SQLite does not support `?` in PRAGMA statements; follow the existing v0→v1 pattern)
 - `elif version == 2: pass` — steady state after migration
 - Any other version raises `RuntimeError`
 
@@ -48,7 +50,7 @@ Sessions are created and closed by track events, not by app startup.
 | App start | No session created. `LapRecorder._session_id = None`. |
 | `on_at_track` | Call `await recorder.start_session()` which creates a session row and sets `self._session_id`. Then start lap 1. |
 | `on_in_race` | Same as `on_at_track`, start lap 0 instead. |
-| `on_track_detected(track_id)` | Call `await recorder.set_track_id(track_id)` — sets `self.current_track_id` AND calls `repo.update_session_track(self._session_id, track_id)` if session is active. |
+| `on_track_detected(track_id)` | Call `recorder.set_track_id(track_id)` (sync) — sets `self.current_track_id` and fires `asyncio.create_task(repo.update_session_track(...))` if session active. |
 | Lap flush | After writing lap frames, call `repo.update_session_car(self._session_id, car_code)` using `car_code` from `self.lap_buffer[0]`. Only updates if session `car_code` is null. |
 | `on_in_game_menu` | Call `await recorder.close_session()` which calls `repo.complete_session(self._session_id, completed_at=now)` then sets `self._session_id = None`. Close current lap first. |
 | `on_race_end` | Same as `on_in_game_menu`. |
@@ -59,7 +61,9 @@ While `recorder._session_id is None`, frame recording and lap inserts are silent
 
 - `__init__` no longer accepts or requires `session_id`. Initialises `self._session_id = None`.
 - New method: `async def start_session() -> None` — calls `repo.insert_session()`, sets `self._session_id`.
-- Existing `set_track_id` becomes `async def set_track_id(track_id: int) -> None` — sets `self.current_track_id` and conditionally calls `repo.update_session_track`.
+- `set_track_id(track_id: int) -> None` remains sync (called via `call_soon_threadsafe`).
+  It sets `self.current_track_id` and, if `self._session_id` is not None, dispatches
+  `asyncio.create_task(self._repo.update_session_track(self._session_id, track_id))`.
 - New method: `async def close_session() -> None` — calls `repo.complete_session`, sets `self._session_id = None`.
 
 `__main__.py` removes the `insert_session` call and stops passing `session_id` to `LapRecorder`.
@@ -107,8 +111,9 @@ Returns all sessions that have at least one complete lap, newest first.
 ]
 ```
 
-`lap_count` and `best_lap_time_ms` are computed by the query (aggregate over laps where
-`is_complete = 1`). Sessions with zero complete laps are excluded.
+`lap_count` and `best_lap_time_ms` are computed by an aggregate query joining `sessions`
+to `laps` (WHERE `laps.is_complete = 1`), grouped by `sessions.id`. Sessions with zero
+complete laps are excluded via `HAVING COUNT(laps.id) > 0`.
 
 #### `GET /sessions/{session_id}/laps`
 
