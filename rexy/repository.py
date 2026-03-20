@@ -171,6 +171,7 @@ class TelemetryRepository:
         await self.db.commit()
 
     async def update_session_track(self, session_id: int, track_id: int) -> None:
+        """Update track_id unconditionally — GT7 re-broadcasts on re-entry, latest wins."""
         await self.db.execute(
             "UPDATE sessions SET track_id=? WHERE id=?", (track_id, session_id)
         )
