@@ -15,9 +15,9 @@ class State(Enum):
 
 
 class LapRecorder:
-    def __init__(self, repo: TelemetryRepository, session_id: int) -> None:
+    def __init__(self, repo: TelemetryRepository) -> None:
         self._repo = repo
-        self._session_id = session_id
+        self._session_id: int | None = None
         self._lock = asyncio.Lock()
         self.state = State.IDLE
         self.current_lap_id: int | None = None
@@ -30,6 +30,10 @@ class LapRecorder:
 
     def set_track_id(self, track_id: int) -> None:
         self.current_track_id = track_id
+        if self._session_id is not None:
+            asyncio.create_task(
+                self._repo.update_session_track(self._session_id, track_id)
+            )
 
     def on_frame(self, frame: dict) -> None:
         if self.state != State.RECORDING:
@@ -40,19 +44,37 @@ class LapRecorder:
 
     # --- async lifecycle methods ---
 
+    async def start_session(self) -> None:
+        self._session_id = await self._repo.insert_session(started_at=time.time())
+
+    async def close_session(self) -> None:
+        if self._session_id is None:
+            return
+        async with self._lock:
+            if self.state == State.RECORDING:
+                await self._flush_partial()
+                self.state = State.IDLE
+        await self._repo.complete_session(self._session_id, completed_at=time.time())
+        self._session_id = None
+
     async def reset_and_new_lap(self, lap_number: int) -> None:
+        if self._session_id is None:
+            return
         async with self._lock:
             if self.state == State.RECORDING:
                 await self._flush_partial()
             self.current_lap_started_at = time.time()
             self.current_lap_id = await self._repo.insert_lap(
-                lap_number, self._session_id, self.current_track_id, started_at=self.current_lap_started_at
+                lap_number, self._session_id, self.current_track_id,
+                started_at=self.current_lap_started_at,
             )
             self.lap_buffer = []
             self.seq = 0
             self.state = State.RECORDING
 
     async def flush_and_new_lap(self, new_lap_number: int) -> None:
+        if self._session_id is None:
+            return
         async with self._lock:
             if self.state != State.RECORDING:
                 return
@@ -66,15 +88,18 @@ class LapRecorder:
 
             if buf:
                 await self._repo.insert_frames(old_id, buf)
-            await self._repo.complete_lap(
-                old_id, lap_time_ms, time.time(), 1, car_code=car
-            )
+            await self._repo.complete_lap(old_id, lap_time_ms, time.time(), 1, car_code=car)
+            if car is not None:
+                await self._repo.update_session_car(self._session_id, car)
+
             self.current_lap_started_at = time.time()
             self.current_lap_id = await self._repo.insert_lap(
-                new_lap_number, self._session_id, self.current_track_id, started_at=self.current_lap_started_at
+                new_lap_number, self._session_id, self.current_track_id,
+                started_at=self.current_lap_started_at,
             )
 
     async def close(self) -> None:
+        """Flush partial lap on shutdown (does not complete the session)."""
         async with self._lock:
             if self.state != State.RECORDING:
                 return
@@ -91,6 +116,4 @@ class LapRecorder:
         self.seq = 0
         if buf:
             await self._repo.insert_frames(old_id, buf)
-            await self._repo.complete_lap(
-                old_id, None, time.time(), 0, car_code=car
-            )
+            await self._repo.complete_lap(old_id, None, time.time(), 0, car_code=car)
