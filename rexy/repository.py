@@ -39,8 +39,11 @@ _FRAME_INSERT = (
 
 _DDL_SESSIONS = """
 CREATE TABLE IF NOT EXISTS sessions (
-    id         INTEGER PRIMARY KEY,
-    started_at REAL NOT NULL
+    id           INTEGER PRIMARY KEY,
+    started_at   REAL NOT NULL,
+    track_id     INTEGER,
+    car_code     INTEGER,
+    completed_at REAL
 )
 """
 
@@ -119,14 +122,14 @@ class TelemetryRepository:
                 "CREATE INDEX IF NOT EXISTS idx_laps_complete_track "
                 "ON laps(is_complete, track_id, lap_time_ms)"
             )
+            await self.db.execute("PRAGMA user_version = 2")
             await self.db.commit()
-            await self.db.execute("PRAGMA user_version = 1")
         elif version == 1:
             await self.db.execute("ALTER TABLE sessions ADD COLUMN track_id INTEGER")
             await self.db.execute("ALTER TABLE sessions ADD COLUMN car_code INTEGER")
             await self.db.execute("ALTER TABLE sessions ADD COLUMN completed_at REAL")
-            await self.db.commit()
             await self.db.execute("PRAGMA user_version = 2")
+            await self.db.commit()
         elif version == 2:
             pass
         else:

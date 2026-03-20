@@ -92,7 +92,7 @@ async def repo():
 
 async def test_schema_version(repo):
     cur = await repo.db.execute("PRAGMA user_version")
-    assert (await cur.fetchone())[0] == 1
+    assert (await cur.fetchone())[0] == 2
 
 
 async def test_wal_mode(tmp_path):
