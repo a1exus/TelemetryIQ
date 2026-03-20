@@ -3,7 +3,83 @@ import tempfile
 
 import aiosqlite
 import pytest
+
 from rexy.repository import TelemetryRepository
+
+
+async def _make_v1_db(path: str) -> None:
+    """Create a version-1 database (sessions table without new columns)."""
+    async with aiosqlite.connect(path) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("""
+            CREATE TABLE sessions (
+                id         INTEGER PRIMARY KEY,
+                started_at REAL NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE laps (
+                id           INTEGER PRIMARY KEY,
+                session_id   INTEGER NOT NULL REFERENCES sessions(id),
+                lap_number   INTEGER NOT NULL,
+                track_id     INTEGER,
+                started_at   REAL    NOT NULL,
+                completed_at REAL,
+                lap_time_ms  INTEGER,
+                car_code     INTEGER,
+                is_complete  INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE frames (
+                lap_id INTEGER NOT NULL,
+                seq    INTEGER NOT NULL,
+                ts     REAL    NOT NULL,
+                PRIMARY KEY (lap_id, seq)
+            )
+        """)
+        await db.commit()
+        await db.execute("PRAGMA user_version = 1")
+
+
+async def test_migration_v1_to_v2_adds_columns():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        await _make_v1_db(path)
+        repo = TelemetryRepository(path)
+        await repo.init()
+        await repo.close()
+
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("PRAGMA user_version")
+            version = (await cur.fetchone())[0]
+            assert version == 2
+
+            cur = await db.execute("PRAGMA table_info(sessions)")
+            cols = {row[1] for row in await cur.fetchall()}
+            assert "track_id" in cols
+            assert "car_code" in cols
+            assert "completed_at" in cols
+    finally:
+        os.unlink(path)
+
+
+async def test_migration_v2_is_noop():
+    """Running init() on a v2 DB must not raise."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        await _make_v1_db(path)
+        repo = TelemetryRepository(path)
+        await repo.init()   # v1 -> v2
+        await repo.close()
+
+        repo2 = TelemetryRepository(path)
+        await repo2.init()  # v2 -> v2 (noop)
+        await repo2.close()
+    finally:
+        os.unlink(path)
 
 
 @pytest.fixture
@@ -16,7 +92,7 @@ async def repo():
 
 async def test_schema_version(repo):
     cur = await repo.db.execute("PRAGMA user_version")
-    assert (await cur.fetchone())[0] == 1
+    assert (await cur.fetchone())[0] == 2
 
 
 async def test_wal_mode(tmp_path):
@@ -168,3 +244,104 @@ def _all_frame_keys():
     """Return all non-lap_id frame column names for building test dicts."""
     from rexy.repository import _FRAME_COLS
     return [c for c in _FRAME_COLS if c != "lap_id"]
+
+
+async def _make_v2_repo() -> tuple[TelemetryRepository, str]:
+    """Create an initialized v2 repo. Caller must close() and unlink path."""
+    f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    path = f.name
+    f.close()
+    repo = TelemetryRepository(path)
+    await repo.init()
+    return repo, path
+
+
+async def test_update_session_track():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+        await repo.update_session_track(sid, 40)
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("SELECT track_id FROM sessions WHERE id=?", (sid,))
+            row = await cur.fetchone()
+        assert row[0] == 40
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_update_session_car_only_updates_if_null():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+        await repo.update_session_car(sid, 3520)
+        await repo.update_session_car(sid, 9999)  # second call: should be ignored
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("SELECT car_code FROM sessions WHERE id=?", (sid,))
+            row = await cur.fetchone()
+        assert row[0] == 3520  # first write wins
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_complete_session():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+        await repo.complete_session(sid, completed_at=2000.0)
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("SELECT completed_at FROM sessions WHERE id=?", (sid,))
+            row = await cur.fetchone()
+        assert row[0] == 2000.0
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_list_sessions_excludes_empty_sessions():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+        # No laps yet -> should not appear
+        result = await repo.list_sessions()
+        assert result == []
+
+        # Add one complete lap
+        lid = await repo.insert_lap(1, sid, None, 1000.0)
+        await repo.complete_lap(lid, 101887, 1101.887, 1, car_code=3520)
+
+        result = await repo.list_sessions()
+        assert len(result) == 1
+        assert result[0]["id"] == sid
+        assert result[0]["lap_count"] == 1
+        assert result[0]["best_lap_time_ms"] == 101887
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_list_session_laps_excludes_lap0_and_incomplete():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+
+        # Lap 0 (complete) -- must be excluded from UI
+        lid0 = await repo.insert_lap(0, sid, None, 1000.0)
+        await repo.complete_lap(lid0, 105000, 1105.0, 1, car_code=3520)
+
+        # Lap 1 (complete) -- must be included
+        lid1 = await repo.insert_lap(1, sid, None, 1105.0)
+        await repo.complete_lap(lid1, 101887, 1207.0, 1, car_code=3520)
+
+        # Lap 2 (incomplete) -- must be excluded
+        lid2 = await repo.insert_lap(2, sid, None, 1207.0)
+        await repo.complete_lap(lid2, None, 1300.0, 0, car_code=3520)
+
+        laps = await repo.list_session_laps(sid)
+        assert len(laps) == 1
+        assert laps[0]["lap_number"] == 1
+        assert laps[0]["lap_time_ms"] == 101887
+    finally:
+        await repo.close()
+        os.unlink(path)

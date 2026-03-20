@@ -145,23 +145,27 @@ def setup_client(
 
     def on_at_track_handler() -> None:
         print("[gt-telem] event: on_at_track", flush=True)
-        # TT / practice: cars_on_track=False; current_lap not available here
-        loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(recorder.reset_and_new_lap(1))
-        )
+
+        async def _start_and_lap() -> None:
+            await recorder.start_session()
+            await recorder.reset_and_new_lap(1)
+
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(_start_and_lap()))
 
     def on_in_game_menu_handler() -> None:
         print("[gt-telem] event: on_in_game_menu", flush=True)
         loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(recorder.close())
+            lambda: asyncio.create_task(recorder.close_session())
         )
 
     def on_in_race_handler() -> None:
         print("[gt-telem] event: on_in_race", flush=True)
-        # Race start: cars_on_track=True, current_lap=0; on_lap_change(1) flushes it
-        loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(recorder.reset_and_new_lap(0))
-        )
+
+        async def _start_and_lap() -> None:
+            await recorder.start_session()
+            await recorder.reset_and_new_lap(0)
+
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(_start_and_lap()))
 
     def on_race_start_handler() -> None:
         print("[gt-telem] event: on_race_start", flush=True)
@@ -172,7 +176,7 @@ def setup_client(
     def on_race_end_handler() -> None:
         print("[gt-telem] event: on_race_end", flush=True)
         loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(recorder.close())
+            lambda: asyncio.create_task(recorder.close_session())
         )
 
     def on_lap_change_handler(new_lap_number: int) -> None:

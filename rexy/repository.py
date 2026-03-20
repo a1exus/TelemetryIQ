@@ -39,8 +39,11 @@ _FRAME_INSERT = (
 
 _DDL_SESSIONS = """
 CREATE TABLE IF NOT EXISTS sessions (
-    id         INTEGER PRIMARY KEY,
-    started_at REAL NOT NULL
+    id           INTEGER PRIMARY KEY,
+    started_at   REAL NOT NULL,
+    track_id     INTEGER,
+    car_code     INTEGER,
+    completed_at REAL
 )
 """
 
@@ -119,9 +122,15 @@ class TelemetryRepository:
                 "CREATE INDEX IF NOT EXISTS idx_laps_complete_track "
                 "ON laps(is_complete, track_id, lap_time_ms)"
             )
+            await self.db.execute("PRAGMA user_version = 2")
             await self.db.commit()
-            await self.db.execute("PRAGMA user_version = 1")
         elif version == 1:
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN track_id INTEGER")
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN car_code INTEGER")
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN completed_at REAL")
+            await self.db.execute("PRAGMA user_version = 2")
+            await self.db.commit()
+        elif version == 2:
             pass
         else:
             raise RuntimeError(f"unsupported schema version: {version}")
@@ -160,6 +169,56 @@ class TelemetryRepository:
             (lap_time_ms, completed_at, is_complete, car_code, lap_id),
         )
         await self.db.commit()
+
+    async def update_session_track(self, session_id: int, track_id: int) -> None:
+        """Update track_id unconditionally — GT7 re-broadcasts on re-entry, latest wins."""
+        await self.db.execute(
+            "UPDATE sessions SET track_id=? WHERE id=?", (track_id, session_id)
+        )
+        await self.db.commit()
+
+    async def update_session_car(self, session_id: int, car_code: int) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET car_code=? WHERE id=? AND car_code IS NULL",
+            (car_code, session_id),
+        )
+        await self.db.commit()
+
+    async def complete_session(self, session_id: int, completed_at: float) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET completed_at=? WHERE id=?", (completed_at, session_id)
+        )
+        await self.db.commit()
+
+    async def list_sessions(self) -> list[dict]:
+        """Return all sessions with at least one complete lap, newest first."""
+        cur = await self.db.execute(
+            """
+            SELECT s.id, s.started_at, s.completed_at, s.track_id, s.car_code,
+                   COUNT(l.id) AS lap_count,
+                   MIN(l.lap_time_ms) AS best_lap_time_ms
+            FROM sessions s
+            JOIN laps l ON l.session_id = s.id AND l.is_complete = 1
+            GROUP BY s.id
+            HAVING COUNT(l.id) > 0
+            ORDER BY s.started_at DESC
+            """
+        )
+        rows = await cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def list_session_laps(self, session_id: int) -> list[dict]:
+        """Return complete laps with lap_number > 0 for a session, ordered by lap_number."""
+        cur = await self.db.execute(
+            "SELECT id, lap_number, lap_time_ms FROM laps "
+            "WHERE session_id=? AND is_complete=1 AND lap_number > 0 "
+            "ORDER BY lap_number",
+            (session_id,),
+        )
+        rows = await cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
 
     async def insert_frames(self, lap_id: int, frames: list[dict]) -> None:
         if not frames:
