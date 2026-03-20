@@ -1,4 +1,5 @@
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -230,9 +231,7 @@ async def test_start_session_sets_session_id(recorder, mock_repo):
 
 async def test_close_session_calls_complete_session(active_recorder, mock_repo):
     await active_recorder.close_session()
-    mock_repo.complete_session.assert_called_once_with(1, completed_at=pytest.approx(
-        mock_repo.complete_session.call_args[1]["completed_at"], abs=5
-    ))
+    mock_repo.complete_session.assert_called_once_with(1, completed_at=pytest.approx(time.time(), abs=5))
     assert active_recorder._session_id is None
 
 

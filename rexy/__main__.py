@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-import time
 
 import uvicorn
 from gt_telem import TurismoClient
@@ -29,10 +28,9 @@ async def _main() -> None:
     repo = TelemetryRepository(db_path)
     await repo.init()
     set_repo(repo)
-    session_id = await repo.insert_session(started_at=time.time())
 
     # Recorder and queues
-    recorder = LapRecorder(repo=repo, session_id=session_id)
+    recorder = LapRecorder(repo=repo)
     raw_queue: asyncio.Queue = asyncio.Queue()
     ws_queue: asyncio.Queue = asyncio.Queue(maxsize=1)
     loop = asyncio.get_running_loop()
