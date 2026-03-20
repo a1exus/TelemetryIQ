@@ -83,8 +83,12 @@ Two JSON files bundled at `rexy/static/`:
 ```
 
 Both files are scraped from `https://www.gran-turismo.com/us/gt7/carlist` and the
-equivalent track list page. They are committed to the repo as static assets. No
-runtime network calls are made by either server or client to resolve names.
+equivalent track list page and committed to the repo as static assets. No runtime
+network calls are made by either server or client to resolve names.
+
+Both files may be committed as empty objects (`{}`) initially and populated separately
+— this does not block implementation. The UI falls back to `"Car {code}"` /
+`"Track {id}"` when a code is not found.
 
 If a code is not found in the JSON, the client falls back to `"Car {code}"` /
 `"Track {id}"`.
@@ -117,7 +121,8 @@ complete laps are excluded via `HAVING COUNT(laps.id) > 0`.
 
 #### `GET /sessions/{session_id}/laps`
 
-Returns complete laps (`is_complete = 1`) for a session, ordered by lap number ascending.
+Returns complete laps (`is_complete = 1` AND `lap_number > 0`) for a session, ordered by
+lap number ascending. Lap 0 (out lap / formation lap in races) is excluded from the UI.
 `track_id` is intentionally omitted — it lives on the session, not the lap list.
 
 ```json
