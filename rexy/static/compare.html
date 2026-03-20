@@ -162,12 +162,12 @@ async function loadLapList() {
     const btnA = document.createElement('button');
     btnA.className = 'btn-a';
     btnA.textContent = 'A';
-    btnA.addEventListener('click', () => selectLap(lap.id, 'A'));
+    btnA.addEventListener('click', () => selectLap(lap, 'A'));
 
     const btnB = document.createElement('button');
     btnB.className = 'btn-b';
     btnB.textContent = 'B';
-    btnB.addEventListener('click', () => selectLap(lap.id, 'B'));
+    btnB.addEventListener('click', () => selectLap(lap, 'B'));
 
     btns.appendChild(btnA);
     btns.appendChild(btnB);
@@ -179,18 +179,18 @@ async function loadLapList() {
   });
 }
 
-async function fetchFrames(lapId) {
-  if (state.cache[lapId]) return state.cache[lapId];
-  const r = await fetch(`/laps/${lapId}/frames`);
+async function fetchFrames(lap) {
+  if (state.cache[lap.id]) return state.cache[lap.id];
+  const r = await fetch(`/laps/${lap.car_code}/${lap.lap_number}/${lap.id}/frames`);
   const frames = await r.json();
-  state.cache[lapId] = frames;
+  state.cache[lap.id] = frames;
   return frames;
 }
 
-async function selectLap(lapId, slot) {
-  const frames = await fetchFrames(lapId);
-  if (slot === 'A') state.lapA = { id: lapId, frames };
-  else              state.lapB = { id: lapId, frames };
+async function selectLap(lap, slot) {
+  const frames = await fetchFrames(lap);
+  if (slot === 'A') state.lapA = { id: lap.id, frames };
+  else              state.lapB = { id: lap.id, frames };
   updateButtonStates();
   renderAll();
 }

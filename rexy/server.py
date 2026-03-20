@@ -76,8 +76,8 @@ async def get_laps():
     return await _repo.list_laps()
 
 
-@app.get("/laps/{lap_id}/frames")
-async def get_frames(lap_id: int):
+@app.get("/laps/{car_code}/{lap_number}/{lap_id}/frames")
+async def get_frames(car_code: int, lap_number: int, lap_id: int):
     from fastapi import HTTPException
     if _repo is None:
         raise HTTPException(status_code=503, detail="repository not ready")

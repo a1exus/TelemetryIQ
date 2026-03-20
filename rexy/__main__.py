@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 
 import uvicorn
@@ -77,6 +78,8 @@ def main() -> None:
         asyncio.run(_main())
     except KeyboardInterrupt:
         pass
+    # gt-telem starts non-daemon threads; force exit so we don't hang.
+    sys.exit(0)
 
 
 if __name__ == "__main__":
