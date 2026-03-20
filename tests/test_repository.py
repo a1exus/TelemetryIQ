@@ -1,3 +1,7 @@
+import os
+import tempfile
+
+import aiosqlite
 import pytest
 from rexy.repository import TelemetryRepository
 
@@ -94,6 +98,21 @@ async def test_init_idempotent(tmp_path):
     r2 = TelemetryRepository(db)
     await r2.init()  # second init on version=1 must not raise
     await r2.close()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_schema_version_raises():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        async with aiosqlite.connect(path) as db:
+            await db.execute("PRAGMA user_version = 99")
+        repo = TelemetryRepository(path)
+        with pytest.raises(RuntimeError):
+            await repo.init()
+        await repo.close()
+    finally:
+        os.unlink(path)
 
 
 @pytest.mark.asyncio
