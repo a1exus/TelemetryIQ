@@ -12,12 +12,17 @@ All notable changes to this project will be documented in this file.
   each lap completes
 - `/compare` lap comparison dashboard: distance-aligned multi-trace overlay, time-delta
   graph, track map with crosshair sync; replaces the old `/analysis` route
+- All gt-telem game/race events logged to stdout: `on_running`, `on_paused`, `on_at_track`,
+  `on_in_game_menu`, `on_in_race`, `on_race_start`, `on_race_finish`, `on_race_end`,
+  `on_lap_change`, `on_track_detected`
 
 ### Fixed
 
 - Lap timer anchored to server-recorded `lap_started_at` timestamp — survives browser refreshes
   and sleep/wake reconnects without resetting to zero
 - Frame fetch errors and null `lap_time_ms` handled gracefully in the comparison dashboard
+- Ctrl-C shutdown no longer hangs: `tc.stop()` now runs in a thread executor with a 3 s
+  timeout, preventing the event loop from blocking on gt-telem's internal thread join
 
 ## [Week of 2026-03-16]
 
