@@ -44,7 +44,7 @@ def test_get_laps_503_before_repo_set():
 
 
 def test_get_frames_adds_distance():
-    r = TestClient(app).get("/laps/1/frames")
+    r = TestClient(app).get("/laps/42/1/1/frames")
     assert r.status_code == 200
     frames = r.json()
     assert frames[0]["distance_m"] == 0.0
@@ -55,7 +55,7 @@ def test_get_frames_adds_distance():
 
 
 def test_get_frames_unknown_lap_returns_empty():
-    r = TestClient(app).get("/laps/999/frames")
+    r = TestClient(app).get("/laps/42/1/999/frames")
     assert r.status_code == 200
     assert r.json() == []
 
