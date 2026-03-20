@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Week of 2026-03-19] — Phase 4 Part 1
+
+### Added
+
+- Session management: each track outing is a first-class session with car and track identity
+- `GET /sessions` — all sessions with at least one complete lap, newest first
+- `GET /sessions/{id}/laps` — complete laps for a session (lap 0 excluded)
+- `cars.json` and `tracks.json` static lookup files bundled at `/static/`
+- Session browser sidebar on `/compare`: sessions grouped with nested lap rows,
+  most recent expanded by default, delta-to-best shown per lap row
+
+### Changed
+
+- `LapRecorder` no longer requires `session_id` at construction; sessions are created
+  automatically on `on_at_track` and `on_in_race` events and closed on `on_in_game_menu`
+  and `on_race_end`
+- DB schema migrated user_version 1 to 2: sessions table gains `track_id`,
+  `car_code`, and `completed_at` columns
+
 ## [Week of 2026-03-19]
 
 ### Added
