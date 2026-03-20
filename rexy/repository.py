@@ -122,6 +122,12 @@ class TelemetryRepository:
             await self.db.commit()
             await self.db.execute("PRAGMA user_version = 1")
         elif version == 1:
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN track_id INTEGER")
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN car_code INTEGER")
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN completed_at REAL")
+            await self.db.commit()
+            await self.db.execute("PRAGMA user_version = 2")
+        elif version == 2:
             pass
         else:
             raise RuntimeError(f"unsupported schema version: {version}")

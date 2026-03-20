@@ -1,5 +1,85 @@
+import os
+import tempfile
+
+import aiosqlite
 import pytest
+
 from rexy.repository import TelemetryRepository
+
+
+async def _make_v1_db(path: str) -> None:
+    """Create a version-1 database (sessions table without new columns)."""
+    async with aiosqlite.connect(path) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("""
+            CREATE TABLE sessions (
+                id         INTEGER PRIMARY KEY,
+                started_at REAL NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE laps (
+                id           INTEGER PRIMARY KEY,
+                session_id   INTEGER NOT NULL REFERENCES sessions(id),
+                lap_number   INTEGER NOT NULL,
+                track_id     INTEGER,
+                started_at   REAL    NOT NULL,
+                completed_at REAL,
+                lap_time_ms  INTEGER,
+                car_code     INTEGER,
+                is_complete  INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE frames (
+                lap_id INTEGER NOT NULL,
+                seq    INTEGER NOT NULL,
+                ts     REAL    NOT NULL,
+                PRIMARY KEY (lap_id, seq)
+            )
+        """)
+        await db.commit()
+        await db.execute("PRAGMA user_version = 1")
+
+
+async def test_migration_v1_to_v2_adds_columns():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        await _make_v1_db(path)
+        repo = TelemetryRepository(path)
+        await repo.init()
+        await repo.close()
+
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("PRAGMA user_version")
+            version = (await cur.fetchone())[0]
+            assert version == 2
+
+            cur = await db.execute("PRAGMA table_info(sessions)")
+            cols = {row[1] for row in await cur.fetchall()}
+            assert "track_id" in cols
+            assert "car_code" in cols
+            assert "completed_at" in cols
+    finally:
+        os.unlink(path)
+
+
+async def test_migration_v2_is_noop():
+    """Running init() on a v2 DB must not raise."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        await _make_v1_db(path)
+        repo = TelemetryRepository(path)
+        await repo.init()   # v1 -> v2
+        await repo.close()
+
+        repo2 = TelemetryRepository(path)
+        await repo2.init()  # v2 -> v2 (noop)
+        await repo2.close()
+    finally:
+        os.unlink(path)
 
 
 @pytest.fixture
