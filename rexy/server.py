@@ -76,6 +76,22 @@ async def get_laps():
     return await _repo.list_laps()
 
 
+@app.get("/sessions")
+async def get_sessions():
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    return await _repo.list_sessions()
+
+
+@app.get("/sessions/{session_id}/laps")
+async def get_session_laps(session_id: int):
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    return await _repo.list_session_laps(session_id)
+
+
 @app.get("/laps/{car_code}/{lap_number}/{lap_id}/frames")
 async def get_frames(car_code: int, lap_number: int, lap_id: int):
     from fastapi import HTTPException
