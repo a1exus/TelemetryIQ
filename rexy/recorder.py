@@ -45,6 +45,8 @@ class LapRecorder:
     # --- async lifecycle methods ---
 
     async def start_session(self) -> None:
+        if self._session_id is not None:
+            return  # already in a session — guard against rapid re-entry
         self._session_id = await self._repo.insert_session(started_at=time.time())
 
     async def close_session(self) -> None:
@@ -54,8 +56,9 @@ class LapRecorder:
             if self.state == State.RECORDING:
                 await self._flush_partial()
                 self.state = State.IDLE
-        await self._repo.complete_session(self._session_id, completed_at=time.time())
-        self._session_id = None
+            session_id = self._session_id
+            self._session_id = None  # clear inside lock to prevent concurrent lap writes
+        await self._repo.complete_session(session_id, completed_at=time.time())
 
     async def reset_and_new_lap(self, lap_number: int) -> None:
         if self._session_id is None:
