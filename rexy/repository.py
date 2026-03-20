@@ -170,6 +170,55 @@ class TelemetryRepository:
         )
         await self.db.commit()
 
+    async def update_session_track(self, session_id: int, track_id: int) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET track_id=? WHERE id=?", (track_id, session_id)
+        )
+        await self.db.commit()
+
+    async def update_session_car(self, session_id: int, car_code: int) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET car_code=? WHERE id=? AND car_code IS NULL",
+            (car_code, session_id),
+        )
+        await self.db.commit()
+
+    async def complete_session(self, session_id: int, completed_at: float) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET completed_at=? WHERE id=?", (completed_at, session_id)
+        )
+        await self.db.commit()
+
+    async def list_sessions(self) -> list[dict]:
+        """Return all sessions with at least one complete lap, newest first."""
+        cur = await self.db.execute(
+            """
+            SELECT s.id, s.started_at, s.completed_at, s.track_id, s.car_code,
+                   COUNT(l.id) AS lap_count,
+                   MIN(l.lap_time_ms) AS best_lap_time_ms
+            FROM sessions s
+            JOIN laps l ON l.session_id = s.id AND l.is_complete = 1
+            GROUP BY s.id
+            HAVING COUNT(l.id) > 0
+            ORDER BY s.started_at DESC
+            """
+        )
+        rows = await cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def list_session_laps(self, session_id: int) -> list[dict]:
+        """Return complete laps with lap_number > 0 for a session, ordered by lap_number."""
+        cur = await self.db.execute(
+            "SELECT id, lap_number, lap_time_ms FROM laps "
+            "WHERE session_id=? AND is_complete=1 AND lap_number > 0 "
+            "ORDER BY lap_number",
+            (session_id,),
+        )
+        rows = await cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+
     async def insert_frames(self, lap_id: int, frames: list[dict]) -> None:
         if not frames:
             return
