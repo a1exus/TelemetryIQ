@@ -37,7 +37,8 @@
 
 - [x] Connect to GT7 telemetry and stream data (Phase 1)
 - [x] Record telemetry per lap to persistent storage + minimal live view (Phase 2)
-- [x] Lap comparison dashboard: REST API for lap/frame data; distance-based trace charts; time delta; track map (Phase 3 — `/compare`)
+- [x] Lap comparison dashboard: REST API for lap/frame data; distance-based
+  trace charts; time delta; track map (Phase 3 — `/compare`)
 - [x] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
   (Phase 3 — HUD redesign)
 - [x] Sessions as first-class entities with car/track identity (Phase 4.1)
@@ -374,10 +375,79 @@ gran-turismo.com JS bundles. See `AGENTS.md` for refresh instructions.
 | 4.1 | Sessions as first-class entities; car/track identity; session-browser UI | ✅ Done |
 | 4.2 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
 
+## Core Use Cases (from GT7 Data Logger)
+
+The official [GT7 Data Logger article](https://www.gran-turismo.com/us/news/00_5736734.html)
+defines two primary analysis workflows. These are the north star for
+TelemetryIQ's `/compare` feature.
+
+### 1. Compare and Improve Driving Techniques
+
+**Scenario:** Same car, same settings, different laps (or different drivers).
+**Question:** "Where am I losing time?"
+
+Key analysis:
+
+- **Speed + Gap graph**: identify where time is gained/lost per corner
+- **Driving line overlay**: see braking points, apex proximity, corner exit
+- **Throttle/Brake traces**: spot coasting (neither accelerating nor braking),
+  late/early braking, hesitant throttle application
+- **Lateral G**: cornering commitment and consistency
+
+The article example: slower driver braked earlier at Tsukuba Turn 1, lost
+speed at corner entry, relied on momentum through apex. Faster driver braked
+later, hit slightly lower minimum speed, but got on throttle earlier — gained
+0.5s by corner exit.
+
+**Status:** Fully supported today via `/compare` (speed, gap, driving line,
+throttle/brake/lateral G traces, synchronized crosshair).
+
+### 2. Compare and Improve Car Settings
+
+**Scenario:** Same driver, same track, different car setup.
+**Question:** "Did this setup change help?"
+
+Key analysis:
+- Compare laps before/after a setup change (e.g. front downforce, tire type)
+- Look for: understeer reduction, earlier throttle application, cleaner
+  cornering, tighter driving line
+- Speed + Gap graph shows net effect per corner
+
+The article example: increasing front downforce allowed later braking, cleaner
+turn-in without understeer, earlier throttle — 0.3s improvement.
+
+**Status:** Visualization exists. Missing: setup tagging per session/lap so
+the user can identify *which* setup produced each lap. Planned for Phase 4.2.
+
+## Decisions
+
+Non-obvious design choices and why they were made. Prevents future reversals.
+
+| Decision | Why | Alternatives rejected |
+| --- | --- | --- |
+| `maxsize=1` queue (drop-oldest) | At ~60 Hz, freshness matters more than completeness for live display | Unbounded queue (memory leak), larger buffer (stale frames) |
+| Server-side `lap_started_at` timestamp | Lap timer must survive browser sleep/wake reconnects; client-side `Date.now()` resets on reconnect | Client-side timer (breaks on reconnect), game-provided timer (GT7 doesn't broadcast running lap time) |
+| `set_track_id()` stays sync | Called via `call_soon_threadsafe` from gt-telem thread; making it async would require `asyncio.run_coroutine_threadsafe` | Async method (breaks `call_soon_threadsafe` pattern) |
+| `sys.exit(0)` after `asyncio.run()` | gt-telem spawns non-daemon threads that prevent clean Python exit | `tc.stop()` alone (blocks on thread join), daemon threads (not our code) |
+| Sessions as first-class DB entities | Sessions own car/track identity; deriving from laps is fragile and loses boundary info | Derive session from laps (anti-pattern, loses start/end events) |
+| Static `cars.json` / `tracks.json` | No runtime network calls, no CORS issues, works offline | Fetch from GT7 website at runtime (CORS, fragile, requires network) |
+| `user_version` PRAGMA for migrations | SQLite built-in, no external migration tool needed; value is an integer, incremented per schema change | Alembic (overkill), migration table (reinventing the wheel) |
+
+## Known Issues
+
+| Issue | Impact | Notes |
+| --- | --- | --- |
+| Lap counter jumps after laptop sleep | Lap numbers may skip (e.g. 2 → 6) | GT7 continues counting internally during sleep; first `on_lap_change` after wake reports the current GT7 lap number. Data for skipped laps is lost. Needs event log data to confirm. |
+| gt-telem non-daemon threads | App hangs on Ctrl-C without `sys.exit(0)` | Mitigated by `sys.exit(0)` after `asyncio.run()`; `tc.stop()` runs in executor with 3s timeout. |
+
 ## References
 
-- [gt-telem on PyPI](https://pypi.org/project/gt-telem/)
 - [GT7 Data Logger article](https://www.gran-turismo.com/us/news/00_5736734.html)
-  — reference for what a telemetry dashboard should show
+  — **north star** for what the analysis dashboard should do
+- [GT7 Car List (official)](https://www.gran-turismo.com/us/gt7/carlist/)
+  — source for `cars.json`
+- [GT7 Track List (official)](https://www.gran-turismo.com/us/gt7/tracklist/)
+  — source for `tracks.json`
+- [gt-telem on PyPI](https://pypi.org/project/gt-telem/)
 - [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [FastAPI WebSocket docs](https://fastapi.tiangolo.com/advanced/websockets/)
