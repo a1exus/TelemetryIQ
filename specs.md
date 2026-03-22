@@ -3,12 +3,12 @@
 ## Overview
 
 - **Project**: TelemetryIQ — real-time Gran Turismo 7 telemetry dashboard
-- **Status**: Active — Phase 2 (live dashboard) in design
-- **Last updated**: 2026-03-16
+- **Status**: Active — Phase 4 Part 1 (sessions) complete
+- **Last updated**: 2026-03-22
 - **Telemetry source**: [gt-telem](https://pypi.org/project/gt-telem/) (Python
   library for Polyphony Digital's motion-rig telemetry in GT6/GTS/GT7)
 
-## Current state (foundation — Phase 1 complete)
+## Current state (through Phase 4 Part 1)
 
 - GT7 telemetry connection via gt-telem (`TurismoClient`); heartbeat type and
   PS IP configurable via `.env`
@@ -16,6 +16,22 @@
 - Docker Compose with `network_mode: host`
 - `requirements.txt` declares dependencies (`gt-telem`)
 - Makefile for common dev/ops tasks (`build`, `up`, `down`, `logs`, `restart`)
+- Full telemetry recording to SQLite per lap (on `on_lap_change`)
+- Live HUD at `/` with all telemetry fields, post-lap Chart.js overlay
+- Lap comparison dashboard at `/compare` with distance-based trace charts,
+  time delta, track map, synchronized crosshair
+- **Sessions as first-class entities**: `on_at_track`/`on_in_race` opens a
+  session; `on_in_game_menu`/`on_race_end` closes it. Sessions carry
+  `track_id` and `car_code`.
+- Session-browser sidebar in `/compare` with nested lap rows, delta-to-best,
+  best-lap indicator
+- REST API: `GET /laps`, `GET /sessions`, `GET /sessions/{id}/laps`,
+  `GET /laps/{car_code}/{lap_number}/{lap_id}/frames`
+- Static car/track name lookup via `cars.json` (559 cars) and `tracks.json`
+  (106 tracks), sourced from official gran-turismo.com
+- All gt-telem events logged to stdout for observability
+- Server-side lap start timestamp (`lap_started_at`) for accurate lap timer
+  across sleep/wake reconnects
 
 ## Goals
 
@@ -24,7 +40,8 @@
 - [x] Lap comparison dashboard: REST API for lap/frame data; distance-based trace charts; time delta; track map (Phase 3 — `/compare`)
 - [x] Full live engineering display: all telemetry fields visible, post-lap Chart.js overlay
   (Phase 3 — HUD redesign)
-- [ ] Car setup tagging, setup-vs-setup comparison, lap export (Phase 4)
+- [x] Sessions as first-class entities with car/track identity (Phase 4.1)
+- [ ] Car setup tagging, setup-vs-setup comparison, lap export (Phase 4.2)
 
 ## Scope
 
@@ -75,10 +92,14 @@ PlayStation (GT7, ~60Hz UDP)
 
 | Component | File | Responsibility |
 | --- | --- | --- |
-| Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; registers async callbacks (gt-telem supports both sync and async); pushes to queue. Tune `max_callback_workers` for thread pool sizing. |
-| FastAPI server | `rexy/server.py` | WebSocket `/ws` endpoint; broadcaster loop; serves static files |
-| Dashboard | `rexy/static/index.html` | Vanilla JS; renders all telemetry fields; WS reconnect w/ exponential backoff |
-| Entrypoint | `rexy/__main__.py` | Wires client + server; starts both |
+| Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; registers sync callbacks that dispatch to asyncio via `call_soon_threadsafe`; pushes frames to queue; logs all gt-telem events to stdout |
+| FastAPI server | `rexy/server.py` | WebSocket `/ws` endpoint; broadcaster loop; REST API (`/laps`, `/sessions`, `/sessions/{id}/laps`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`); serves static files |
+| Lap recorder | `rexy/recorder.py` | Session lifecycle (`start_session`/`close_session`); lap lifecycle (`reset_and_new_lap`/`flush_and_new_lap`); buffers frames and flushes to SQLite |
+| Repository | `rexy/repository.py` | SQLite access layer; schema DDL with `user_version` migration (currently v2); all CRUD for sessions, laps, frames |
+| Live dashboard | `rexy/static/index.html` | Vanilla JS; renders all telemetry fields; WS reconnect w/ exponential backoff; post-lap Chart.js overlay |
+| Compare dashboard | `rexy/static/compare.html` | Session browser sidebar; distance-based trace charts; time delta; track map; synchronized crosshair |
+| Static data | `rexy/static/cars.json`, `tracks.json` | Car code → name and track ID → name lookups (from gran-turismo.com) |
+| Entrypoint | `rexy/__main__.py` | Wires client + server + recorder; starts both; handles graceful shutdown (`sys.exit(0)` to force-exit past gt-telem threads) |
 
 ## Running
 
@@ -243,7 +264,9 @@ Live gauges continue to use the existing WebSocket feed. Analysis and live are s
 | Method | Path | Returns |
 | --- | --- | --- |
 | `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, started_at}]` |
-| `GET` | `/laps/{id}/frames` | `[{seq, …all telemetry fields…, distance_m}]` |
+| `GET` | `/laps/{car_code}/{lap_number}/{lap_id}/frames` | `[{seq, …all telemetry fields…, distance_m}]` |
+| `GET` | `/sessions` | `[{id, started_at, completed_at, track_id, car_code, lap_count, best_lap_time_ms}]` |
+| `GET` | `/sessions/{id}/laps` | `[{id, lap_number, lap_time_ms}]` (complete laps, lap_number > 0) |
 
 `distance_m` is computed server-side per frame:
 `d[i] = d[i-1] + speed_mps[i] * dt`
@@ -300,6 +323,47 @@ No npm, no build step. All dependencies loaded from CDN in `index.html`.
   if response time exceeds 200ms in practice.
 - Track map must not re-fetch on channel change — cache frame data in JS after first fetch.
 
+## Phase 4 Part 1 — Sessions
+
+### Overview
+
+Sessions are first-class entities that group laps recorded during a single
+track visit. A session starts when `on_at_track` or `on_in_race` fires and
+closes when `on_in_game_menu` or `on_race_end` fires. Each session carries
+`track_id` (from `on_track_detected`) and `car_code` (from the first complete
+lap's telemetry).
+
+### Schema (user_version = 2)
+
+Sessions table gained `track_id INTEGER`, `car_code INTEGER`, and
+`completed_at REAL` columns. Fresh installs create the full schema at v2;
+existing v1 databases are migrated via `ALTER TABLE ADD COLUMN`.
+
+### Session lifecycle
+
+- `LapRecorder.__init__` takes only `repo` (no `session_id`); `_session_id`
+  starts as `None`.
+- `start_session()` guards against re-entry (no-op if `_session_id` is set).
+- `close_session()` flushes any partial lap, clears `_session_id` inside the
+  lock, then calls `complete_session()`.
+- `set_track_id()` remains sync (safe for `call_soon_threadsafe`); dispatches
+  `asyncio.create_task` internally to update the session's `track_id`.
+- `flush_and_new_lap()` writes `car_code` to the session on first complete lap.
+
+### UI
+
+The `/compare` sidebar is a session browser: sessions listed newest-first,
+most recent auto-expanded. Each session row shows car name, track name,
+lap count, and best lap time. Expanding a session lazily fetches its laps via
+`GET /sessions/{id}/laps`. Each lap row shows delta-to-best and a ★ for the
+session's best lap. Lap 0 (formation/out lap) is excluded.
+
+### Static data
+
+`rexy/static/cars.json` (559 cars) and `rexy/static/tracks.json` (106 tracks)
+provide car_code → name and track_id → name lookups. Sourced from official
+gran-turismo.com JS bundles. See `AGENTS.md` for refresh instructions.
+
 ## Roadmap
 
 | Phase | Description | Status |
@@ -307,7 +371,8 @@ No npm, no build step. All dependencies loaded from CDN in `index.html`.
 | 1 | Foundation: telemetry connection, Docker, packaging | ✅ Done |
 | 2 | Recording: persist full telemetry per lap to SQLite (on `on_lap_change`); minimal live view (speed, RPM, gear, lap time) via WebSocket | ✅ Done |
 | 3 | Analysis dashboard (`/compare`): REST API, distance-based trace charts, delta graph, track map; HUD redesign: full live display + post-lap overlay | ✅ Done |
-| 4 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
+| 4.1 | Sessions as first-class entities; car/track identity; session-browser UI | ✅ Done |
+| 4.2 | Car setup tagging per lap; setup-vs-setup comparison on same track; lap data export | 📋 Planned |
 
 ## References
 
