@@ -1,120 +1,122 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Week of 2026-04-07] — Phase 4.2
+---
+
+## v0.5.0 — Phase 4.2: Setup Comparison (2026-04-07)
 
 ### Added
 
-- **Auto-diff banner** in /compare: automatically detects gear ratio, top speed,
-  and max speed changes when comparing laps from different sessions
-- **Session notes**: free-text notes per session with inline edit in sidebar
-  and comparison header showing notes when overlaying different sessions
-- **Session filtering**: filter sidebar by track and car for faster navigation
-- `PATCH /sessions/{id}` endpoint for updating session notes
-- Schema migration v2→v3: adds `notes` column to sessions table
+- **Auto-diff banner** in `/compare`: automatically detects gear ratio, top
+  speed, and max speed changes when comparing laps from different sessions
+- **Session notes**: free-text note per session with inline edit in sidebar;
+  shown in comparison header when overlaying laps from different sessions
+- **Session filtering**: filter sidebar by track and/or car for faster
+  navigation when you have many sessions
+- `PATCH /sessions/{id}` endpoint for saving/clearing session notes
+- Schema migration v2→v3: `notes TEXT` column on sessions table
 
 ### Changed
 
-- **Live HUD redesign**: removed Car State card (debug info) and historical
-  charts from bottom zone. HUD is now a pure glanceable driving display —
-  speed, gear, RPM, pedals, tires, lap timer. No Chart.js dependency on `/`.
-- **Compare page redesign**: replaced A/B two-lap model with N-lap overlay.
-  Expanding a session auto-selects all its laps with distinct colours.
-  Click to toggle laps on/off. Right-click to set baseline/reference lap
-  (rendered as thicker dashed line). Delta chart computed against reference.
-  Axis labels added to all charts.
-- `cars.json` populated with 559 cars and `tracks.json` with 106 tracks,
-  sourced from official gran-turismo.com JS bundles.
-- `specs.md` restructured around domain model: vision, use cases, domain
-  entities, architecture, decisions, known issues, roadmap.
+- **Live HUD redesigned**: removed Car State card (debug info) and historical
+  charts from bottom zone — HUD is now a pure glanceable driving display
+  (speed, gear, RPM, pedals, tires, lap timer). Chart.js removed from `/`.
+- **Compare page redesigned**: replaced A/B two-lap selection with N-lap
+  overlay. Expanding a session auto-selects all its laps with distinct
+  colours. Click to toggle, right-click to set baseline/reference (thicker
+  dashed line). Delta chart computed against reference. Axis labels added.
+- `cars.json` populated (559 cars) and `tracks.json` (106 tracks) from
+  official gran-turismo.com
+- `specs.md` restructured around domain model with GT7 Data Logger use cases
+  as north star
 
-## [Week of 2026-03-19] — Phase 4 Part 1
+---
+
+## v0.4.0 — Phase 4.1: Sessions (2026-03-19)
 
 ### Added
 
-- Session management: each track outing is a first-class session with car and track identity
+- **Sessions as first-class entities**: each track outing is a session with
+  car and track identity
 - `GET /sessions` — all sessions with at least one complete lap, newest first
 - `GET /sessions/{id}/laps` — complete laps for a session (lap 0 excluded)
 - `cars.json` and `tracks.json` static lookup files bundled at `/static/`
-- Session browser sidebar on `/compare`: sessions grouped with nested lap rows,
-  most recent expanded by default, delta-to-best shown per lap row
+- Session browser sidebar on `/compare`: sessions grouped with nested lap
+  rows, most recent expanded by default, delta-to-best per lap, best-lap
+  indicator
 
 ### Changed
 
-- `LapRecorder` no longer requires `session_id` at construction; sessions are created
-  automatically on `on_at_track` and `on_in_race` events and closed on `on_in_game_menu`
-  and `on_race_end`
-- DB schema migrated user_version 1 to 2: sessions table gains `track_id`,
-  `car_code`, and `completed_at` columns
+- `LapRecorder` no longer requires `session_id` at construction; sessions
+  created automatically on `on_at_track`/`on_in_race` and closed on
+  `on_in_game_menu`/`on_race_end`
+- DB schema migrated user_version 1→2: sessions table gains `track_id`,
+  `car_code`, `completed_at` columns
 
-## [Week of 2026-03-19]
+---
+
+## v0.3.0 — Phase 3: Analysis Dashboard (2026-03-19)
 
 ### Added
 
-- Live engineering HUD: full-viewport driver display with speed, RPM, gear, throttle/brake bars,
-  G-force gauge, tyre temps, fuel, boost, and lap timer
-- Post-lap Chart.js overlay: speed, throttle, brake, and lateral-G traces rendered after
-  each lap completes
-- `/compare` lap comparison dashboard: distance-aligned multi-trace overlay, time-delta
-  graph, track map with crosshair sync; replaces the old `/analysis` route
-- All gt-telem game/race events logged to stdout: `on_running`, `on_paused`, `on_at_track`,
-  `on_in_game_menu`, `on_in_race`, `on_race_start`, `on_race_finish`, `on_race_end`,
-  `on_lap_change`, `on_track_detected`
+- **Live engineering HUD** at `/`: full-viewport driver display with speed,
+  RPM, gear, throttle/brake bars, shift lights, tyre temps, fuel, boost,
+  lap timer with delta-to-best
+- **Post-lap Chart.js overlay**: speed, throttle, brake traces rendered after
+  each completed lap
+- **`/compare` analysis dashboard**: distance-aligned multi-trace overlay
+  (speed, throttle, brake, gear, lateral G, steering), time-delta graph,
+  track map with crosshair sync
+- `GET /laps` and `GET /laps/{car_code}/{lap_number}/{lap_id}/frames`
+  REST endpoints
+- All gt-telem game/race events logged to stdout: `on_running`, `on_paused`,
+  `on_at_track`, `on_in_game_menu`, `on_in_race`, `on_race_start`,
+  `on_race_finish`, `on_race_end`, `on_lap_change`, `on_track_detected`
 
 ### Fixed
 
-- Lap timer anchored to server-recorded `lap_started_at` timestamp — survives browser refreshes
-  and sleep/wake reconnects without resetting to zero
-- Frame fetch errors and null `lap_time_ms` handled gracefully in the comparison dashboard
-- Ctrl-C shutdown no longer hangs: `tc.stop()` now runs in a thread executor with a 3 s
-  timeout, preventing the event loop from blocking on gt-telem's internal thread join
+- Lap timer anchored to server-recorded `lap_started_at` — survives browser
+  refreshes and sleep/wake reconnects
+- Ctrl-C shutdown no longer hangs: `tc.stop()` in executor with 3s timeout;
+  `sys.exit(0)` to force-exit past gt-telem non-daemon threads
+- Frame fetch errors and null `lap_time_ms` handled gracefully
 
-## [Week of 2026-03-16]
+---
 
-### Changed
-
-- Rethought product phases: recording (Phase 2) now precedes the analysis dashboard
-  (Phase 3); setup comparison added as Phase 4
-- Removed lap recording from "out of scope" — it is now the core of Phase 2
-- `specs.md` is now the single source of truth for constraints and design decisions;
-  no separate design documents
-- Updated `plan.md`, `tasks/`, `README.md`, `GEMINI.md`, and `CLAUDE.md` to reflect
-  new phases and correct entrypoint (`python -m rexy`)
-- Driving line (`position_x/y/z`) added to Phase 3 dashboard requirements
-
-## [Week of 2026-03-15]
+## v0.2.0 — Phase 2: Recording + Live View (2026-03-16)
 
 ### Added
 
-- `PS_IP` env variable for manual PlayStation IP when auto-discovery fails
-- `GT7_HEARTBEAT_TYPE` env variable to configure telemetry format
-  (`A`, `B`, or `~`)
-- `.env.example` with documented configuration options
-- README with prerequisites, setup, run instructions, and config reference
-- `Makefile` with `build`, `up`, `down`, `logs`, `restart` targets
+- **Full telemetry recording** to SQLite per lap on `on_lap_change` event
+- **Live dashboard** at `/` with all telemetry field cards over WebSocket
+- `TelemetryRepository` with SQLite schema, WAL journal mode, session/lap/
+  frame CRUD
+- `LapRecorder` state machine (IDLE/RECORDING) with async lock
+- FastAPI server with WebSocket `/ws` broadcaster and static file serving
+- `telemetry_to_dict` serialiser covering all gt-telem fields (A, B, ~)
 
 ### Changed
 
-- `TurismoClient` now reads `PS_IP` and `GT7_HEARTBEAT_TYPE` from environment
-- Docker Compose wires in `.env` via `env_file` (optional, won't fail if missing)
-- Renamed Docker Compose service from `gt7` to `telemetryiq`
-- Renamed package directory from `gt7` to `rexy`
-- Reverted to `requirements.txt` for dependency management; removed `pyproject.toml`
-- Dockerfile reverted to `pip install -r requirements.txt`; entrypoint is
-  `python -m rexy`
+- Architecture: callback-driven `TurismoClient` with `asyncio.Queue`
+  (maxsize=1, drop-oldest) for freshness over completeness
 
-### Notes
+---
 
-- Docker Desktop on macOS and Windows cannot receive UDP from external devices (PS5).
-  Use a Linux host (e.g. Raspberry Pi) on the same LAN, or install via pip on macOS/Windows.
-
-## [Week of 2026-03-09]
+## v0.1.0 — Phase 1: Foundation (2026-03-15)
 
 ### Added
 
 - GT7 telemetry connection via `gt-telem` (`TurismoClient`)
-- Live stdout stream of speed, RPM, and gear from GT7
-- Error handling for PlayStation not found and PlayStation on standby
-- Docker Compose setup with host networking for PlayStation discovery
-- `python -m gt7` entrypoint
+- Live stdout stream of speed, RPM, and gear
+- `PS_IP` and `GT7_HEARTBEAT_TYPE` environment variables
+- `.env.example` with documented configuration options
+- Docker Compose with `network_mode: host` for PS5 UDP discovery
+- `Makefile` with `build`, `up`, `down`, `logs`, `restart` targets
+- Error handling for PlayStation not found / on standby
+
+### Notes
+
+- Docker Desktop on macOS/Windows cannot receive UDP from PS5 — use Linux
+  host or run directly via pip on macOS/Windows
