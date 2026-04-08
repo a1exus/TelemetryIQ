@@ -44,6 +44,42 @@
   .lap-star      { color: #fa4; }
   #sidebar-msg  { color: #555; font-size: 0.8rem; padding: 0.5rem; }
 
+  /* session notes in sidebar */
+  .session-notes { font-size: 0.65rem; color: #aaa; margin-top: 0.15rem;
+                   padding-left: 1rem; cursor: default; }
+  .session-notes-empty { font-size: 0.65rem; color: #444; margin-top: 0.15rem;
+                         padding-left: 1rem; cursor: pointer; font-style: italic; }
+  .session-notes-input { font-size: 0.65rem; background: #1a1a1a; color: #e0e0e0;
+                         border: 1px solid #333; border-radius: 3px;
+                         padding: 0.15rem 0.3rem; width: calc(100% - 1rem);
+                         margin-top: 0.15rem; margin-left: 1rem;
+                         font-family: 'Courier New', monospace; outline: none; }
+  .session-notes-input:focus { border-color: #4af; }
+  .session-notes a { color: #4af; text-decoration: none; font-size: 0.6rem; margin-left: 0.3rem; }
+  .session-notes a:hover { color: #8cf; }
+  .session-notes-empty a { color: #4af; text-decoration: none; }
+  .session-notes-empty a:hover { color: #8cf; }
+
+  /* filters */
+  #filters { display: flex; gap: 0.4rem; padding: 0.4rem 0.3rem;
+             border-bottom: 1px solid #222; }
+  #filters select { flex: 1; background: #1a1a1a; color: #ccc; border: 1px solid #333;
+                    border-radius: 3px; padding: 0.2rem 0.3rem; font-size: 0.7rem;
+                    font-family: 'Courier New', monospace; outline: none; }
+  #filters select:focus { border-color: #4af; }
+
+  /* compare header */
+  #compare-hdr { display: none; font-size: 0.7rem; padding: 0.4rem 0.6rem;
+                 background: #111; border: 1px solid #1e1e1e; border-radius: 4px; }
+  .hdr-session { margin-bottom: 0.2rem; }
+  .hdr-session-notes { color: #aaa; }
+  .hdr-session-notes.dimmed { color: #444; font-style: italic; }
+
+  /* setup diff banner */
+  #setup-diff { display: none; font-size: 0.7rem; padding: 0.4rem 0.6rem;
+                background: #1a1a10; border: 1px solid #333; border-radius: 4px;
+                color: #fa4; }
+
   /* content */
   #content { flex: 1; overflow-y: auto; padding: 0.75rem;
              display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
@@ -83,6 +119,8 @@
     <p id="placeholder">Expand a session to overlay its laps.</p>
 
     <div id="legend"></div>
+    <div id="compare-hdr"></div>
+    <div id="setup-diff"></div>
 
     <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
       <canvas id="ch-speed" height="80"></canvas></div>
@@ -125,6 +163,8 @@ const state = {
   sessions: [], cars: {}, tracks: {},
   lapCache: new Map(),
   colorIdx: 0,
+  filterTrack: null,
+  filterCar: null,
 };
 
 function nextColor() {
@@ -182,6 +222,8 @@ async function toggleLap(lap) {
       frames,
       color: nextColor(),
       label: 'Lap ' + lap.lap_number + ' (' + fmtMs(lap.lap_time_ms) + ')',
+      session_id: lap.session_id,
+      session_notes: lap.session_notes,
     });
   }
   updateLapRowStates();
@@ -203,6 +245,8 @@ async function selectAllLaps(session) {
         frames: frameSets[i],
         color: nextColor(),
         label: 'Lap ' + lap.lap_number + ' (' + fmtMs(lap.lap_time_ms) + ')',
+        session_id: session.id,
+        session_notes: session.notes || null,
       });
     }
     if (lap.lap_time_ms != null && lap.lap_time_ms < bestTime) {
@@ -268,7 +312,11 @@ async function populateLaps(lapsDiv, session) {
   }
   const best = session.best_lap_time_ms;
   laps.forEach(lap => {
-    const lapWithCar = Object.assign({}, lap, { car_code: session.car_code });
+    const lapWithCar = Object.assign({}, lap, {
+      car_code: session.car_code,
+      session_id: session.id,
+      session_notes: session.notes || null,
+    });
     const isBest = lap.lap_time_ms === best;
     const entry = state.selected.get(lap.id);
 
@@ -321,6 +369,55 @@ function renderSidebar() {
     return;
   }
 
+  // ── Filter dropdowns (Task 7) ──────────────────────────────────────────────
+  const filtersDiv = document.createElement('div');
+  filtersDiv.id = 'filters';
+
+  const trackSelect = document.createElement('select');
+  const allTracksOpt = document.createElement('option');
+  allTracksOpt.value = '';
+  allTracksOpt.textContent = 'All tracks';
+  trackSelect.appendChild(allTracksOpt);
+  const uniqueTracks = [...new Set(state.sessions.map(s => s.track_id).filter(v => v != null))];
+  uniqueTracks.map(tid => ({ id: tid, name: state.tracks[String(tid)] || 'Track ' + tid }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = String(t.id);
+      opt.textContent = t.name;
+      if (state.filterTrack != null && String(state.filterTrack) === String(t.id)) opt.selected = true;
+      trackSelect.appendChild(opt);
+    });
+  trackSelect.addEventListener('change', () => {
+    state.filterTrack = trackSelect.value ? Number(trackSelect.value) : null;
+    applyFilters();
+  });
+
+  const carSelect = document.createElement('select');
+  const allCarsOpt = document.createElement('option');
+  allCarsOpt.value = '';
+  allCarsOpt.textContent = 'All cars';
+  carSelect.appendChild(allCarsOpt);
+  const uniqueCars = [...new Set(state.sessions.map(s => s.car_code).filter(v => v != null))];
+  uniqueCars.map(cc => ({ code: cc, name: state.cars[String(cc)] || 'Car ' + cc }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = String(c.code);
+      opt.textContent = c.name;
+      if (state.filterCar != null && String(state.filterCar) === String(c.code)) opt.selected = true;
+      carSelect.appendChild(opt);
+    });
+  carSelect.addEventListener('change', () => {
+    state.filterCar = carSelect.value ? Number(carSelect.value) : null;
+    applyFilters();
+  });
+
+  filtersDiv.appendChild(trackSelect);
+  filtersDiv.appendChild(carSelect);
+  sidebar.appendChild(filtersDiv);
+
+  // ── Session list ──────────────────────────────────────────────────────────
   state.sessions.forEach((session, idx) => {
     const trackName = session.track_id != null
       ? (state.tracks[String(session.track_id)] || 'Track ' + session.track_id)
@@ -332,6 +429,8 @@ function renderSidebar() {
 
     const wrapper = document.createElement('div');
     wrapper.className = 'session-item';
+    if (session.track_id != null) wrapper.dataset.trackId = String(session.track_id);
+    if (session.car_code != null) wrapper.dataset.carCode = String(session.car_code);
 
     const hdr = document.createElement('div');
     hdr.className = 'session-hdr';
@@ -357,10 +456,16 @@ function renderSidebar() {
     hdr.appendChild(line1);
     hdr.appendChild(metaEl);
 
+    // Session notes (Task 6)
+    const notesEl = createNotesEl(session);
+    hdr.appendChild(notesEl);
+
     const lapsDiv = document.createElement('div');
     lapsDiv.className = 'session-laps' + (idx === 0 ? ' open' : '');
 
-    hdr.addEventListener('click', async () => {
+    hdr.addEventListener('click', async (e) => {
+      // Don't toggle session if clicking on notes edit controls
+      if (e.target.closest('.session-notes, .session-notes-empty, .session-notes-input')) return;
       const open = lapsDiv.classList.toggle('open');
       arrowEl.textContent = open ? '\u25bc' : '\u25b6';
       if (open && !lapsDiv.children.length) {
@@ -379,6 +484,8 @@ function renderSidebar() {
       populateLaps(lapsDiv, session).then(() => selectAllLaps(session));
     }
   });
+
+  applyFilters();
 }
 
 async function loadSidebar() {
@@ -606,11 +713,178 @@ function updateLegend() {
   el.appendChild(hint);
 }
 
+// ── Compare header (Task 5) ─────────────────────────────────────────────────
+function updateCompareHeader() {
+  const el = document.getElementById('compare-hdr');
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  const entries = [...state.selected.values()];
+  const bySession = new Map();
+  entries.forEach(e => {
+    if (e.session_id == null) return;
+    if (!bySession.has(e.session_id)) bySession.set(e.session_id, []);
+    bySession.get(e.session_id).push(e);
+  });
+
+  if (bySession.size < 2) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+
+  bySession.forEach((laps, sid) => {
+    const row = document.createElement('div');
+    row.className = 'hdr-session';
+    const color = laps[0].color;
+    const bar = document.createElement('span');
+    bar.style.cssText = 'display:inline-block;width:3px;height:0.85em;margin-right:0.4rem;vertical-align:middle;background:' + color;
+    row.appendChild(bar);
+    const notesSpan = document.createElement('span');
+    notesSpan.className = 'hdr-session-notes' + (laps[0].session_notes ? '' : ' dimmed');
+    notesSpan.textContent = laps[0].session_notes || '(no notes)';
+    row.appendChild(notesSpan);
+    el.appendChild(row);
+  });
+}
+
+// ── Setup diff banner (Task 4) ──────────────────────────────────────────────
+function computeSetupDiff() {
+  const el = document.getElementById('setup-diff');
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  const entries = [...state.selected.values()];
+  const bySession = new Map();
+  entries.forEach(e => {
+    if (e.session_id == null) return;
+    if (!bySession.has(e.session_id)) bySession.set(e.session_id, e);
+  });
+
+  const sessions = [...bySession.values()];
+  if (sessions.length < 2) { el.style.display = 'none'; return; }
+
+  // Extract first frame from each unique session
+  const sessionFrames = sessions.map(e => e.frames[0]).filter(Boolean);
+  if (sessionFrames.length < 2) { el.style.display = 'none'; return; }
+
+  const GEAR_KEYS = ['gear1','gear2','gear3','gear4','gear5','gear6','gear7','gear8'];
+  const diffs = [];
+  const fA = sessionFrames[0];
+
+  for (let s = 1; s < sessionFrames.length; s++) {
+    const fB = sessionFrames[s];
+    GEAR_KEYS.forEach((key, idx) => {
+      const a = fA[key], b = fB[key];
+      if (a == null || b == null) return;
+      if (a === 0 && b === 0) return;
+      if (Math.abs(a - b) > 0.0001) {
+        const label = 'G' + (idx + 1);
+        diffs.push(label + ': ' + a.toFixed(3) + ' \u2192 ' + b.toFixed(3));
+      }
+    });
+    if (fA.trans_top_speed != null && fB.trans_top_speed != null &&
+        Math.round(fA.trans_top_speed) !== Math.round(fB.trans_top_speed)) {
+      diffs.push('Top speed setting: ' + Math.round(fA.trans_top_speed) +
+                 ' \u2192 ' + Math.round(fB.trans_top_speed));
+    }
+    if (fA.calc_max_speed != null && fB.calc_max_speed != null &&
+        Math.round(fA.calc_max_speed) !== Math.round(fB.calc_max_speed)) {
+      diffs.push('Calc max speed: ' + Math.round(fA.calc_max_speed) +
+                 ' \u2192 ' + Math.round(fB.calc_max_speed));
+    }
+  }
+
+  if (!diffs.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = '\u2699 Auto-detected: ' + diffs.join(', ');
+}
+
+// ── Inline notes edit (Task 6) ──────────────────────────────────────────────
+function startNoteEdit(session, notesEl) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'session-notes-input';
+  input.value = session.notes || '';
+  input.placeholder = 'Session notes...';
+
+  const parent = notesEl.parentNode;
+  parent.replaceChild(input, notesEl);
+  input.focus();
+
+  function save() {
+    const val = input.value.trim();
+    fetch('/sessions/' + session.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: val || null }),
+    }).then(r => {
+      if (!r.ok) throw new Error('PATCH failed: ' + r.status);
+      session.notes = val || null;
+      // Update selected laps referencing this session
+      state.selected.forEach(entry => {
+        if (entry.session_id === session.id) {
+          entry.session_notes = session.notes;
+        }
+      });
+      // Invalidate lap cache so next render picks up changes
+      rebuildNotesEl();
+      updateCompareHeader();
+    }).catch(err => {
+      console.error('Failed to save notes:', err);
+      rebuildNotesEl();
+    });
+  }
+
+  function rebuildNotesEl() {
+    const newEl = createNotesEl(session);
+    if (input.parentNode) input.parentNode.replaceChild(newEl, input);
+  }
+
+  function cancel() { rebuildNotesEl(); }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener('blur', save);
+}
+
+function createNotesEl(session) {
+  const notesEl = document.createElement('div');
+  if (session.notes) {
+    notesEl.className = 'session-notes';
+    const txt = document.createTextNode(session.notes + ' ');
+    notesEl.appendChild(txt);
+    const editLink = document.createElement('a');
+    editLink.href = '#';
+    editLink.textContent = '[edit]';
+    editLink.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); startNoteEdit(session, notesEl); });
+    notesEl.appendChild(editLink);
+  } else {
+    notesEl.className = 'session-notes-empty';
+    const addLink = document.createElement('a');
+    addLink.href = '#';
+    addLink.textContent = '[+ add note]';
+    addLink.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); startNoteEdit(session, notesEl); });
+    notesEl.appendChild(addLink);
+  }
+  return notesEl;
+}
+
+// ── Filter sessions (Task 7) ────────────────────────────────────────────────
+function applyFilters() {
+  document.querySelectorAll('.session-item').forEach(el => {
+    const trackId = el.dataset.trackId;
+    const carCode = el.dataset.carCode;
+    const matchTrack = state.filterTrack == null || trackId === String(state.filterTrack);
+    const matchCar = state.filterCar == null || carCode === String(state.filterCar);
+    el.style.display = (matchTrack && matchCar) ? '' : 'none';
+  });
+}
+
 // ── renderAll ────────────────────────────────────────────────────────────────
 function renderAll() {
   const ph = document.getElementById('placeholder');
   if (state.selected.size > 0 && ph) ph.remove();
   updateLegend();
+  updateCompareHeader();
+  computeSetupDiff();
   updateTraceCharts();
   updateDeltaChart();
   drawTrackMap();
