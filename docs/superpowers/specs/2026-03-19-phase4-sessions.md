@@ -1,4 +1,4 @@
-# Phase 4 — Session Browser & Car/Track Identity
+# Phase 4 — Sessions: Session Browser & Car/Track Identity
 
 **Date:** 2026-03-19
 **Status:** Approved for planning
