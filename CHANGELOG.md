@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v0.5.0 — Phase 4.2: Setup Comparison (2026-04-07)
+## v4.2 — Phase 4.2: Setup Comparison (2026-04-07)
 
 ### Added
 
@@ -34,7 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v0.4.0 — Phase 4.1: Sessions (2026-03-19)
+## v4.1 — Phase 4.1: Sessions (2026-03-19)
 
 ### Added
 
@@ -57,7 +57,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v0.3.0 — Phase 3: Analysis Dashboard (2026-03-19)
+## v3.0 — Phase 3: Analysis Dashboard (2026-03-19)
 
 ### Added
 
@@ -85,7 +85,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v0.2.0 — Phase 2: Recording + Live View (2026-03-16)
+## v2.0 — Phase 2: Recording + Live View (2026-03-16)
 
 ### Added
 
@@ -104,7 +104,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v0.1.0 — Phase 1: Foundation (2026-03-15)
+## v1.0 — Phase 1: Foundation (2026-03-15)
 
 ### Added
 
