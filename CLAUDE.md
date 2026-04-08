@@ -13,7 +13,7 @@ per lap to SQLite and enables lap-over-lap comparison.
 **Phase 2** (complete): Lap recording to SQLite + live HUD over WebSocket.
 **Phase 3** (complete): Analysis dashboard — N-lap overlay, gap graph, track map.
 **Phase 4.1** (complete): Sessions as first-class entities, car/track identity.
-**Phase 4.2** (in progress): Setup comparison — auto-diff, session notes, filtering.
+**Phase 4.2** (complete): Setup comparison — auto-diff, session notes, filtering.
 
 ## Commands
 
@@ -61,9 +61,9 @@ GT7 (UDP ~60 Hz) → TurismoClient (gt-telem, sync callbacks)
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; sync callbacks dispatch to asyncio via `call_soon_threadsafe`; logs all events to stdout |
 | FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST API; serves static files |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; lap lifecycle; buffers frames and flushes to SQLite |
-| Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (currently v2) |
+| Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (currently v3) |
 | Live HUD | `rexy/static/index.html` | Vanilla JS; speed/gear/RPM, pedals, tires, lap timer; no charts (analysis is on /compare) |
-| Compare | `rexy/static/compare.html` | N-lap overlay; session browser; distance-based traces; delta graph; track map |
+| Compare | `rexy/static/compare.html` | N-lap overlay; session browser; auto-diff banner; session notes; track/car filters; distance-based traces; delta graph; track map |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups from gran-turismo.com |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles shutdown (`sys.exit(0)` past gt-telem threads) |
 

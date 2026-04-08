@@ -61,9 +61,11 @@ N-lap overlay analysis modelled on MoTeC i2 / AiM Race Studio:
 
 | Element | Description |
 | --- | --- |
-| Session browser | Sessions listed newest-first with car name, track name, lap count, best time. Expanding a session auto-selects all its laps for overlay. |
+| Session browser | Sessions listed newest-first with car name, track name, lap count, best time. Filter by track and car. Expanding a session auto-selects all its laps for overlay. |
 | N-lap overlay | All selected laps overlaid on every chart with distinct colours. Click any lap in the sidebar to toggle it on/off. |
 | Baseline/reference | Best lap auto-set as reference (thicker dashed line, `[REF]` tag). Right-click any lap to change reference. Delta chart computed against it. |
+| Session notes | Free-text note per session (e.g. "front DF +5"). Inline edit in sidebar. Shown in comparison header when overlaying laps from different sessions. |
+| Auto-diff banner | Automatically detects gear ratio, top speed, and max speed changes between sessions — no user input needed. |
 | Trace channels | Speed (km/h), throttle (%), brake (%), gear, lateral accel (m/s²), steering (rad) — all distance-aligned x-axis with labelled axes |
 | Time delta | Gap graph: cumulative time difference vs reference lap at every metre of track |
 | Track map | `position_x` vs `position_z` with lap-coloured paths |
@@ -137,8 +139,8 @@ PlayStation (GT7, ~60 Hz UDP)
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; serialises frames; wires all game/race event callbacks |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; buffers frames; flushes to SQLite on lap change |
 | Repository | `rexy/repository.py` | All SQLite reads and writes; schema migrations via `user_version` |
-| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |
+| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `PATCH /sessions/{id}`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |
 | Live HUD | `rexy/static/index.html` | Vanilla JS; glanceable driving display |
-| Lap analysis | `rexy/static/compare.html` | N-lap overlay with session browser, baseline reference, trace charts, delta, track map |
+| Lap analysis | `rexy/static/compare.html` | N-lap overlay with session browser, auto-diff banner, session notes, track/car filters, baseline reference, trace charts, delta, track map |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups (559 cars, 106 tracks from gran-turismo.com) |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles clean shutdown |
