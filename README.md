@@ -41,32 +41,33 @@ Once running, open **<http://localhost:8000>** in a browser from any device on t
 
 ### `/` — Live HUD
 
-Full-viewport engineering display, updated at ~60 Hz:
+Glanceable driving display, updated at ~60 Hz. Designed to be readable in a
+0.5-second glance at speed.
 
 | Section | Fields |
 | --- | --- |
 | Speed | km/h (large) |
-| Powertrain | RPM bar + shift lights, gear, suggested gear |
-| Pedals | Throttle % bar, brake % bar |
-| G-forces | Lateral and longitudinal gauge |
-| Tyres | FL / FR / RL / RR temperature (colour-coded) |
-| Temps | Oil temp, water temp, boost pressure |
-| Fuel | Level bar + percentage |
-| Lap timer | Running lap time (anchored to server-side lap-start — survives sleep/wake) |
-| Lap info | Current lap number, last lap time, best lap time |
-| Post-lap overlay | Chart.js traces (speed, throttle, brake, lateral G) rendered automatically after each lap |
+| Powertrain | RPM, gear, shift lights (green → amber → red → flash) |
+| Pedals | Throttle % bar + value, brake % bar + value |
+| Tyres | FL / FR / RL / RR temperature (colour-coded: blue → green → amber → red) + suspension height |
+| Temps | Oil temp, oil pressure, water temp, boost pressure |
+| Badges | TCS, ASM, REV limit indicators; suggested gear; fuel % |
+| Lap timer | Running lap time (anchored to server-side `lap_started_at` — survives sleep/wake) |
+| Lap info | Current lap / total, last lap time, best lap time, delta to best |
 
-### `/compare` — Lap Comparison
+### `/compare` — Lap Analysis
 
-Select any two recorded laps for a side-by-side analysis:
+N-lap overlay analysis modelled on MoTeC i2 / AiM Race Studio:
 
 | Element | Description |
 | --- | --- |
-| Lap selector | Filterable list of all recorded laps with time, car code, and date |
-| Trace overlay | Speed, throttle, brake, gear, lateral G — distance-aligned x-axis |
-| Time delta | Gap graph: cumulative time difference at every metre of track |
-| Track map | `position_x` vs `position_z`, colour-coded by speed; two-lap overlay |
-| Crosshair sync | Hover any chart — all charts and track map highlight the same distance point |
+| Session browser | Sessions listed newest-first with car name, track name, lap count, best time. Expanding a session auto-selects all its laps for overlay. |
+| N-lap overlay | All selected laps overlaid on every chart with distinct colours. Click any lap in the sidebar to toggle it on/off. |
+| Baseline/reference | Best lap auto-set as reference (thicker dashed line, `[REF]` tag). Right-click any lap to change reference. Delta chart computed against it. |
+| Trace channels | Speed (km/h), throttle (%), brake (%), gear, lateral accel (m/s²), steering (rad) — all distance-aligned x-axis with labelled axes |
+| Time delta | Gap graph: cumulative time difference vs reference lap at every metre of track |
+| Track map | `position_x` vs `position_z` with lap-coloured paths |
+| Crosshair sync | Hover any chart — all charts highlight the same distance point |
 
 Laps are recorded automatically to `telemetry.db` (SQLite) on every `on_lap_change` event.
 
@@ -118,31 +119,26 @@ PlayStation (GT7, ~60 Hz UDP)
         ├─── asyncio.Queue (maxsize=1, drop-oldest)
         │           │
         │           ▼
-        │    dispatcher loop          rexy/dispatcher.py
-        │    writes frames to SQLite on active lap
-        │           │
-        │           ▼
-        │    ws_queue (maxsize=1)
-        │           │
-        │           ▼
-        │    broadcaster loop         rexy/server.py
+        │    FastAPI broadcaster      rexy/server.py
         │    fans out JSON to all WS clients
         │           │ WebSocket /ws
         │           ▼
         │    Browser — index.html     rexy/static/index.html
-        │    live HUD + post-lap charts
+        │    live driving HUD
         │
         └─── LapRecorder              rexy/recorder.py
-             flushes buffered frames to SQLite on lap change
+             session lifecycle (start/close on game events)
+             buffers frames; flushes to SQLite on lap change
              (/compare reads via REST from the same DB)
 ```
 
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; serialises frames; wires all game/race event callbacks |
-| Dispatcher | `rexy/dispatcher.py` | Drains raw queue; feeds ws_queue and recorder |
-| Lap recorder | `rexy/recorder.py` | Buffers frames; flushes to SQLite on lap change |
-| Repository | `rexy/repository.py` | All SQLite reads and writes |
-| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/laps/{id}/frames`; serves static files |
-| Live HUD | `rexy/static/index.html` | Vanilla JS; live gauges + post-lap Chart.js overlay |
+| Lap recorder | `rexy/recorder.py` | Session lifecycle; buffers frames; flushes to SQLite on lap change |
+| Repository | `rexy/repository.py` | All SQLite reads and writes; schema migrations via `user_version` |
+| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |
+| Live HUD | `rexy/static/index.html` | Vanilla JS; glanceable driving display |
+| Lap analysis | `rexy/static/compare.html` | N-lap overlay with session browser, baseline reference, trace charts, delta, track map |
+| Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups (559 cars, 106 tracks from gran-turismo.com) |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles clean shutdown |

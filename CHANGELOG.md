@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Week of 2026-04-07]
+
+### Changed
+
+- **Live HUD redesign**: removed Car State card (debug info) and historical
+  charts from bottom zone. HUD is now a pure glanceable driving display —
+  speed, gear, RPM, pedals, tires, lap timer. No Chart.js dependency on `/`.
+- **Compare page redesign**: replaced A/B two-lap model with N-lap overlay.
+  Expanding a session auto-selects all its laps with distinct colours.
+  Click to toggle laps on/off. Right-click to set baseline/reference lap
+  (rendered as thicker dashed line). Delta chart computed against reference.
+  Axis labels added to all charts.
+- `cars.json` populated with 559 cars and `tracks.json` with 106 tracks,
+  sourced from official gran-turismo.com JS bundles.
+- `specs.md` restructured around domain model: vision, use cases, domain
+  entities, architecture, decisions, known issues, roadmap.
+
 ## [Week of 2026-03-19] — Phase 4 Part 1
 
 ### Added
