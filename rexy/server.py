@@ -5,7 +5,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -90,6 +90,25 @@ async def get_session_laps(session_id: int):
     if _repo is None:
         raise HTTPException(status_code=503, detail="repository not ready")
     return await _repo.list_session_laps(session_id)
+
+
+@app.patch("/sessions/{session_id}")
+async def patch_session(session_id: int, request: Request):
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    body = await request.json()
+    if "notes" not in body:
+        raise HTTPException(status_code=422, detail="missing 'notes' key")
+    notes = body["notes"]
+    if notes is not None and not isinstance(notes, str):
+        raise HTTPException(status_code=422, detail="notes must be string or null")
+    if notes == "":
+        notes = None
+    rows = await _repo.update_session_notes(session_id, notes)
+    if rows == 0:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {"ok": True}
 
 
 @app.get("/laps/{car_code}/{lap_number}/{lap_id}/frames")

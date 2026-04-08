@@ -8,6 +8,9 @@ from rexy.server import app, set_repo
 
 
 class FakeRepo:
+    def __init__(self):
+        self._notes = {}
+
     async def list_laps(self):
         return [{"id": 1, "lap_number": 1, "lap_time_ms": 90000,
                  "car_code": 42, "started_at": 0.0}]
@@ -32,6 +35,12 @@ class FakeRepo:
             {"seq": 1, "ts": 0.016, "speed_mps": 10.0},
             {"seq": 2, "ts": 0.033, "speed_mps": 20.0},
         ]
+
+    async def update_session_notes(self, session_id: int, notes):
+        if session_id not in (1,):
+            return 0
+        self._notes[session_id] = notes
+        return 1
 
 
 @pytest.fixture(autouse=True)
@@ -104,3 +113,29 @@ def test_get_session_laps_unknown_session_returns_empty():
     r = TestClient(app).get("/sessions/999/laps")
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_patch_session_notes():
+    r = TestClient(app).patch("/sessions/1", json={"notes": "front DF +5"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+
+def test_patch_session_notes_clear():
+    r = TestClient(app).patch("/sessions/1", json={"notes": None})
+    assert r.status_code == 200
+
+
+def test_patch_session_notes_empty_string_clears():
+    r = TestClient(app).patch("/sessions/1", json={"notes": ""})
+    assert r.status_code == 200
+
+
+def test_patch_session_notes_not_found():
+    r = TestClient(app).patch("/sessions/999", json={"notes": "test"})
+    assert r.status_code == 404
+
+
+def test_patch_session_notes_missing_key():
+    r = TestClient(app).patch("/sessions/1", json={"something": "else"})
+    assert r.status_code == 422
