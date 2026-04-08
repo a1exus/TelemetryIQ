@@ -6,6 +6,25 @@ Versioning uses [CalVer](https://calver.org/) (`YYYY.MM.DD`).
 
 ---
 
+## 2026.04.08
+
+### Changed
+
+- **Removed Docker**: Makefile now targets local development only (`make install`,
+  `make run`, `make test`). Removed `Dockerfile`, `compose.yaml`, and all Docker
+  references from living docs.
+- **`make help`**: default target shows usage and env var options
+  (e.g. `PS_IP=192.168.1.42 make run`)
+- **Configuration via env vars**: replaced `.env` file workflow with inline
+  environment variables; `.env.example` updated accordingly
+
+### Removed
+
+- Docker Compose targets (`make build`, `make up`, `make down`, `make logs`,
+  `make restart`)
+
+---
+
 ## 2026.04.07 — Phase 5: Setup Comparison
 
 ### Added

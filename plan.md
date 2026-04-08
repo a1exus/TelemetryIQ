@@ -8,7 +8,7 @@ High-level implementation plan for TelemetryIQ. All five phases are complete. Ph
 
 ### Phase 1: Foundation ✅
 
-- **Deliverables**: Repo layout, dependencies, Docker Compose, `python -m rexy` connects to GT7 telemetry and streams to stdout.
+- **Deliverables**: Repo layout, dependencies, `python -m rexy` connects to GT7 telemetry and streams to stdout.
 - **Tasks**: See `tasks/01-*.md`.
 
 ### Phase 2: Recording ✅
@@ -48,10 +48,9 @@ High-level implementation plan for TelemetryIQ. All five phases are complete. Ph
 
 ## Risks & mitigations
 
-| Risk                                               | Mitigation                                                                    |
-|----------------------------------------------------|-------------------------------------------------------------------------------|
-| PlayStation not found / wrong network              | Handle `PlayStationNotFoundError` / `PlayStationOnStandbyError` from gt-telem |
-| macOS / Windows Docker Desktop can't receive PS5 UDP | Run gt-telem on host directly (documented in README)                        |
+| Risk                                  | Mitigation                                                                    |
+|---------------------------------------|-------------------------------------------------------------------------------|
+| PlayStation not found / wrong network | Handle `PlayStationNotFoundError` / `PlayStationOnStandbyError` from gt-telem |
 
 ## Revision log
 

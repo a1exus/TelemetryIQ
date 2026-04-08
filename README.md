@@ -15,10 +15,11 @@ and more.
 ## Quick Start
 
 ```shell
-cp .env.example .env   # set PS_IP if auto-discovery doesn't work
 make install
 make run
 ```
+
+Run `make help` for all options (e.g. `PS_IP=192.168.1.42 make run`).
 
 ## Web UI
 
@@ -60,7 +61,7 @@ Laps are recorded automatically to `telemetry.db` (SQLite) on every `on_lap_chan
 
 ## Configuration
 
-All configuration via `.env`. See [`.env.example`](.env.example) for the full reference.
+All configuration via environment variables. Pass inline or `export` before running.
 
 | Variable | Default | Description |
 | --- | --- | --- |

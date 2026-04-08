@@ -17,10 +17,13 @@ per lap to SQLite and enables lap-over-lap comparison.
 
 ## Commands
 
+Run `make` or `make help` for usage. Key targets:
+
 ```bash
-make install  # create .venv and pip install -r requirements.txt
-make run      # python -m rexy
-make test     # pytest tests/ -v
+make install                    # create .venv and install dependencies
+make run                        # start TelemetryIQ (auto-discovers PS on LAN)
+make test                       # run tests
+PS_IP=192.168.1.42 make run     # set PlayStation IP manually
 ```
 
 ## Architecture
@@ -62,7 +65,11 @@ GT7 listens on port 33739; the client listens on port 33740.
 
 ## Configuration
 
-Copy `.env.example` → `.env`. Leave `PS_IP` blank for auto-discovery (same LAN required).
+Environment variables — pass inline (e.g. `PS_IP=192.168.1.42 make run`):
+
+- `PS_IP` — PlayStation IP (auto-discovery if unset)
+- `GT7_HEARTBEAT_TYPE` — telemetry format (default `B`)
+- `DB_PATH` — SQLite path (default `./telemetry.db`)
 
 ## Constraints
 

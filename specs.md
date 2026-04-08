@@ -248,11 +248,10 @@ SQLite `user_version` PRAGMA tracks the schema version. On startup:
 - Real-time WebSocket broadcast of all telemetry fields
 - Lap recording to SQLite with session grouping
 - Lap comparison with distance-based charts, delta graph, track map
-- Heartbeat type configurable (`A` / `B` / `~`) via `.env`
+- Heartbeat type configurable (`A` / `B` / `~`) via environment variable
 - Single-page dashboards served by FastAPI (no separate web server)
 - Accessible from any device on the LAN (phone, tablet, laptop)
-- Single Docker container, no external services
-- Runs on Raspberry Pi (ARM64)
+- No external services — single Python process + SQLite
 
 ### Out of Scope
 
@@ -264,16 +263,14 @@ SQLite `user_version` PRAGMA tracks the schema version. On startup:
 ### Assumptions
 
 - PlayStation and host are on the same LAN subnet
-- `PS_IP` set in `.env` if auto-discovery doesn't work
+- `PS_IP` set if auto-discovery doesn't work
 - `GT7_HEARTBEAT_TYPE=B` default (standard + motion); switch to `~` for
   energy recovery (hybrid/EV cars)
 
 ### Platform Notes
 
-| Platform | Notes |
-| --- | --- |
-| macOS / Windows | Docker Desktop runs containers in a Linux VM — PS5 UDP can't reach it. Run gt-telem on the host directly (`source .venv/bin/activate && python -m rexy`). |
-| Linux / Raspberry Pi | `network_mode: host` gives the container direct network access. `docker compose up` is all you need. |
+Runs on any platform with Python 3.10+ and LAN access to the PlayStation.
+`make install && make run` is all you need. Run `make help` for options.
 
 ---
 
@@ -307,7 +304,7 @@ Non-obvious design choices and why they were made.
 
 | Phase | What | Status |
 | --- | --- | --- |
-| 1 | Telemetry connection, Docker, packaging | Done |
+| 1 | Telemetry connection, packaging | Done |
 | 2 | Lap recording to SQLite; live HUD | Done |
 | 3 | Analysis dashboard: trace charts, delta, track map | Done |
 | 4 | Sessions with car/track identity; session browser UI | Done |

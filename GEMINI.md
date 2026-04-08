@@ -9,7 +9,7 @@ lap analysis tool. It captures UDP telemetry from PlayStation via
 `gt-telem`, records full telemetry per lap to SQLite, streams live data
 over WebSocket, and enables lap-over-lap comparison.
 
-- **Primary Technologies:** Python 3.10+, `gt-telem`, FastAPI, SQLite (`aiosqlite`), Docker Compose.
+- **Primary Technologies:** Python 3.10+, `gt-telem`, FastAPI, SQLite (`aiosqlite`).
 - **Status:** Phases 1–5 complete. Phase 6 (lap data export) planned.
 - **Specs:** `specs.md` is the authoritative source for requirements.
   Phase designs and plans are in `docs/superpowers/`.
@@ -77,9 +77,12 @@ PlayStation (GT7, ~60Hz UDP)
 
 ### Common Commands (Makefile)
 
+Run `make` or `make help` for usage.
+
 - `make install`: Create `.venv` and install dependencies.
-- `make run`: Start TelemetryIQ (`python -m rexy`).
-- `make test`: Run tests (`pytest tests/ -v`).
+- `make run`: Start TelemetryIQ (auto-discovers PlayStation on LAN).
+- `make test`: Run tests.
+- `PS_IP=192.168.1.42 make run`: Set PlayStation IP manually.
 
 ## GT7 Connectivity Requirements
 
