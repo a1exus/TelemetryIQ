@@ -2,10 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning uses [CalVer](https://calver.org/) (`YYYY.MM.DD`).
 
 ---
 
-## v4.2 — Phase 4.2: Setup Comparison (2026-04-07)
+## 2026.04.07 — Phase 5: Setup Comparison
 
 ### Added
 
@@ -34,7 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v4.1 — Phase 4.1: Sessions (2026-03-19)
+## 2026.03.20 — Phase 4: Sessions
 
 ### Added
 
@@ -57,7 +58,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v3.0 — Phase 3: Analysis Dashboard (2026-03-19)
+## 2026.03.19 — Phase 3: Analysis Dashboard
 
 ### Added
 
@@ -71,9 +72,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   track map with crosshair sync
 - `GET /laps` and `GET /laps/{car_code}/{lap_number}/{lap_id}/frames`
   REST endpoints
-- All gt-telem game/race events logged to stdout: `on_running`, `on_paused`,
-  `on_at_track`, `on_in_game_menu`, `on_in_race`, `on_race_start`,
-  `on_race_finish`, `on_race_end`, `on_lap_change`, `on_track_detected`
+- All gt-telem game/race events logged to stdout
 
 ### Fixed
 
@@ -85,7 +84,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v2.0 — Phase 2: Recording + Live View (2026-03-16)
+## 2026.03.17 — Phase 2: Recording + Live View
 
 ### Added
 
@@ -104,7 +103,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## v1.0 — Phase 1: Foundation (2026-03-15)
+## 2026.03.15 — Phase 1: Foundation
 
 ### Added
 

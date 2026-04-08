@@ -47,8 +47,8 @@ the north star for TelemetryIQ.
 > *Article example:* Increasing front downforce allowed later braking, cleaner
 > turn-in without understeer, earlier throttle — 0.3s improvement.
 
-**Status:** Visualization exists. Next: free-text session notes so the user
-can record what they changed (Phase 4.2). Gear ratio changes auto-detected.
+**Status:** Complete. Session notes let the user record what they changed.
+Gear ratio, top speed, and max speed changes auto-detected between sessions.
 
 ---
 
@@ -303,16 +303,14 @@ Non-obvious design choices and why they were made.
 
 ## Roadmap
 
-| What | Status |
-| --- | --- |
-| Telemetry connection, Docker, packaging | Done |
-| Lap recording to SQLite; live HUD | Done |
-| Analysis dashboard: trace charts, delta, track map | Done |
-| Sessions with car/track identity; session browser UI | Done |
-| Static car/track name lookup (559 cars, 106 tracks) | Done |
-| Session notes + auto-diff (gear ratios, speeds) + session filtering | Done |
-| Structured setup fields (if notes prove insufficient) | Planned |
-| Lap data export | Planned |
+| Phase | What | Status |
+| --- | --- | --- |
+| 1 | Telemetry connection, Docker, packaging | Done |
+| 2 | Lap recording to SQLite; live HUD | Done |
+| 3 | Analysis dashboard: trace charts, delta, track map | Done |
+| 4 | Sessions with car/track identity; session browser UI | Done |
+| 5 | Setup comparison: auto-diff, session notes, filtering | Done |
+| 6 | Lap data export | Planned |
 
 ---
 
