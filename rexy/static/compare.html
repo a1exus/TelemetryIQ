@@ -19,18 +19,8 @@
   #main { display: flex; flex: 1; min-height: 0; }
 
   /* sidebar */
-  #sidebar { width: 200px; flex-shrink: 0; border-right: 1px solid #222;
+  #sidebar { width: 220px; flex-shrink: 0; border-right: 1px solid #222;
              overflow-y: auto; padding: 0.5rem; }
-  .lap-btns { display: flex; gap: 0.3rem; }
-  .btn-a, .btn-b { flex: 1; padding: 0.2rem; border-radius: 3px; cursor: pointer;
-                   font-family: inherit; font-size: 0.7rem; font-weight: bold;
-                   letter-spacing: 0.05em; border: 1px solid; }
-  .btn-a        { background: #0a1a2a; border-color: #1a4a8a; color: #4af; }
-  .btn-a:hover  { background: #1a3a5a; }
-  .btn-a.active { background: #1a5aaa; border-color: #4af; color: #fff; }
-  .btn-b        { background: #2a1500; border-color: #8a4a00; color: #fa4; }
-  .btn-b:hover  { background: #3a2500; }
-  .btn-b.active { background: #aa6a00; border-color: #fa4; color: #fff; }
   .session-item  { border-bottom: 1px solid #1a1a1a; }
   .session-hdr   { cursor: pointer; user-select: none; padding: 0.45rem 0.5rem;
                    line-height: 1.4; }
@@ -41,26 +31,31 @@
   .session-meta  { font-size: 0.65rem; color: #555; margin-top: 0.1rem; }
   .session-laps  { display: none; }
   .session-laps.open { display: block; }
-  .lap-row       { display: flex; align-items: center; gap: 0.25rem;
-                   padding: 0.22rem 0.5rem; font-size: 0.72rem; }
+  .lap-row       { display: flex; align-items: center; gap: 0.3rem;
+                   padding: 0.25rem 0.5rem; font-size: 0.72rem; cursor: pointer;
+                   border-left: 3px solid transparent; }
   .lap-row:hover { background: #141414; }
-  .lap-num-col   { width: 3.4rem; color: #555; }
-  .lap-time-col  { width: 6rem; color: #4af; }
-  .lap-delta-col { width: 5rem; color: #888; }
+  .lap-row.selected { background: #1a1a1a; }
+  .lap-row.baseline { background: #1a1a10; }
+  .lap-color     { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .lap-num-col   { width: 3rem; color: #555; }
+  .lap-time-col  { width: 5.5rem; font-weight: bold; }
+  .lap-delta-col { color: #888; font-size: 0.65rem; }
   .lap-star      { color: #fa4; }
-  .lap-row-btns  { margin-left: auto; display: flex; gap: 0.2rem; }
   #sidebar-msg  { color: #555; font-size: 0.8rem; padding: 0.5rem; }
 
   /* content */
   #content { flex: 1; overflow-y: auto; padding: 0.75rem;
              display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 
-  #legend { display: none; gap: 1.5rem; font-size: 0.75rem; flex-shrink: 0;
+  #legend { display: none; gap: 0.75rem; font-size: 0.7rem; flex-shrink: 0;
             padding: 0.4rem 0.6rem; background: #111;
-            border: 1px solid #1e1e1e; border-radius: 4px; align-items: center; }
-  .leg-dot { width: 10px; height: 10px; border-radius: 50%;
-             display: inline-block; margin-right: 0.35rem; }
-  #leg-hint { color: #555; margin-left: auto; font-style: italic; font-size: 0.7rem; }
+            border: 1px solid #1e1e1e; border-radius: 4px; align-items: center;
+            flex-wrap: wrap; }
+  .leg-item { display: flex; align-items: center; gap: 0.3rem; }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%;
+             display: inline-block; }
+  #leg-hint { color: #555; margin-left: auto; font-style: italic; font-size: 0.65rem; }
 
   .chart-wrap { background: #111; border: 1px solid #1e1e1e;
                 border-radius: 4px; padding: 0.5rem; }
@@ -85,27 +80,23 @@
 <div id="main">
   <aside id="sidebar"><p id="sidebar-msg">Loading&#8230;</p></aside>
   <main id="content">
-    <p id="placeholder">Select a lap from the list to begin.</p>
+    <p id="placeholder">Expand a session to overlay its laps.</p>
 
-    <div id="legend">
-      <span><span class="leg-dot" style="background:#4af"></span><span id="leg-a">Lap A</span></span>
-      <span><span class="leg-dot" style="background:#fa4"></span><span id="leg-b">Lap B</span></span>
-      <span id="leg-hint">Scroll to zoom &#183; drag to pan</span>
-    </div>
+    <div id="legend"></div>
 
-    <div class="chart-wrap"><p class="chart-lbl">Speed (km/h)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
       <canvas id="ch-speed" height="80"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Throttle (%)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
       <canvas id="ch-throttle" height="60"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Brake (%)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Brake (%) &#8212; x: distance (m)</p>
       <canvas id="ch-brake" height="60"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Gear</p>
+    <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
       <canvas id="ch-gear" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Lateral accel — sway, m/s² (Heartbeat B only)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Lateral accel &#8212; sway, m/s&#178; (Heartbeat B only)</p>
       <canvas id="ch-sway" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Steering rad (Heartbeat B only)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Steering (rad, Heartbeat B only)</p>
       <canvas id="ch-steer" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; A minus B (s)</p>
+    <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; vs best selected (s)</p>
       <canvas id="ch-delta" height="60"></canvas></div>
 
     <div id="map-wrap">
@@ -121,26 +112,35 @@
 <script>
 'use strict';
 
-const COL_A = '#4af';
-const COL_B = '#fa4';
+// Color palette — distinct, colorblind-friendly-ish
+const COLORS = ['#4af','#fa4','#4f4','#f4a','#a4f','#ff4','#4ff','#f44','#8f8','#f88'];
 const charts = {};
 
-// ── Formatting ────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
+// selected: Map<lapId, { id, lap_number, car_code, lap_time_ms, frames, color, label }>
+const state = {
+  selected: new Map(),
+  baselineId: null,   // lap id of the baseline/reference lap
+  frameCache: {},
+  sessions: [], cars: {}, tracks: {},
+  lapCache: new Map(),
+  colorIdx: 0,
+};
+
+function nextColor() {
+  const c = COLORS[state.colorIdx % COLORS.length];
+  state.colorIdx++;
+  return c;
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────────
 function fmtMs(ms) {
   if (ms == null || ms === -1) return '--:--.---';
   const t = Math.max(0, ms | 0);
   const m = (t / 60000) | 0;
   const s = ((t % 60000) / 1000) | 0;
   const f = t % 1000;
-  return `${m}:${String(s).padStart(2,'0')}.${String(f).padStart(3,'0')}`;
-}
-
-// ── Session browser ────────────────────────────────────────────────────────────
-const state = { lapA: null, lapB: null, cache: {}, sessions: [], cars: {}, tracks: {}, lapCache: new Map() };
-
-function fmtDate(unix) {
-  const d = new Date(unix * 1000);
-  return d.toISOString().slice(0, 16).replace('T', ' ');
+  return m + ':' + String(s).padStart(2,'0') + '.' + String(f).padStart(3,'0');
 }
 
 function fmtDelta(deltaMs) {
@@ -149,6 +149,12 @@ function fmtDelta(deltaMs) {
   return sign + (Math.abs(deltaMs) / 1000).toFixed(3) + 's';
 }
 
+function fmtDate(unix) {
+  const d = new Date(unix * 1000);
+  return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+// ── Data fetching ────────────────────────────────────────────────────────────
 async function fetchSessionLaps(sessionId) {
   if (state.lapCache.has(sessionId)) return state.lapCache.get(sessionId);
   const laps = await fetch('/sessions/' + sessionId + '/laps').then(r => r.json());
@@ -156,6 +162,100 @@ async function fetchSessionLaps(sessionId) {
   return laps;
 }
 
+async function fetchFrames(lap) {
+  if (state.frameCache[lap.id]) return state.frameCache[lap.id];
+  const frames = await fetch('/laps/' + lap.car_code + '/' + lap.lap_number + '/' + lap.id + '/frames').then(r => r.json());
+  state.frameCache[lap.id] = frames;
+  return frames;
+}
+
+// ── Lap selection ────────────────────────────────────────────────────────────
+async function toggleLap(lap) {
+  if (state.selected.has(lap.id)) {
+    state.selected.delete(lap.id);
+  } else {
+    const frames = await fetchFrames(lap);
+    state.selected.set(lap.id, {
+      id: lap.id,
+      lap_number: lap.lap_number,
+      lap_time_ms: lap.lap_time_ms,
+      frames,
+      color: nextColor(),
+      label: 'Lap ' + lap.lap_number + ' (' + fmtMs(lap.lap_time_ms) + ')',
+    });
+  }
+  updateLapRowStates();
+  renderAll();
+}
+
+async function selectAllLaps(session) {
+  const laps = await fetchSessionLaps(session.id);
+  const frameSets = await Promise.all(
+    laps.map(lap => fetchFrames(Object.assign({}, lap, { car_code: session.car_code })))
+  );
+  let bestId = null, bestTime = Infinity;
+  laps.forEach((lap, i) => {
+    if (!state.selected.has(lap.id)) {
+      state.selected.set(lap.id, {
+        id: lap.id,
+        lap_number: lap.lap_number,
+        lap_time_ms: lap.lap_time_ms,
+        frames: frameSets[i],
+        color: nextColor(),
+        label: 'Lap ' + lap.lap_number + ' (' + fmtMs(lap.lap_time_ms) + ')',
+      });
+    }
+    if (lap.lap_time_ms != null && lap.lap_time_ms < bestTime) {
+      bestTime = lap.lap_time_ms;
+      bestId = lap.id;
+    }
+  });
+  // Auto-set baseline to best lap if not already set
+  if (state.baselineId == null && bestId != null) state.baselineId = bestId;
+  updateLapRowStates();
+  renderAll();
+}
+
+function deselectAllLaps(session) {
+  const laps = state.lapCache.get(session.id) || [];
+  laps.forEach(lap => state.selected.delete(lap.id));
+  updateLapRowStates();
+  renderAll();
+}
+
+function setBaseline(lapId) {
+  state.baselineId = (state.baselineId === lapId) ? null : lapId;
+  updateLapRowStates();
+  renderAll();
+}
+
+function updateLapRowStates() {
+  document.querySelectorAll('.lap-row').forEach(row => {
+    const lapId = Number(row.dataset.lapId);
+    const entry = state.selected.get(lapId);
+    const isBase = lapId === state.baselineId;
+    row.classList.toggle('selected', !!entry);
+    row.classList.toggle('baseline', isBase);
+    row.style.borderLeftColor = entry ? entry.color : 'transparent';
+    const dot = row.querySelector('.lap-color');
+    if (dot) {
+      dot.style.background = entry ? entry.color : '#333';
+      dot.style.outline = isBase ? '2px solid #fff' : 'none';
+    }
+    const baseTag = row.querySelector('.base-tag');
+    if (isBase && !baseTag) {
+      const tag = document.createElement('span');
+      tag.className = 'base-tag';
+      tag.textContent = 'REF';
+      tag.style.cssText = 'font-size:0.55rem;color:#fa4;font-weight:bold;margin-left:auto;letter-spacing:0.05em';
+      row.appendChild(tag);
+    } else if (!isBase && baseTag) {
+      baseTag.remove();
+    }
+  });
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
 async function populateLaps(lapsDiv, session) {
   const laps = await fetchSessionLaps(session.id);
   while (lapsDiv.firstChild) lapsDiv.removeChild(lapsDiv.firstChild);
@@ -170,10 +270,16 @@ async function populateLaps(lapsDiv, session) {
   laps.forEach(lap => {
     const lapWithCar = Object.assign({}, lap, { car_code: session.car_code });
     const isBest = lap.lap_time_ms === best;
+    const entry = state.selected.get(lap.id);
 
     const row = document.createElement('div');
-    row.className = 'lap-row';
+    row.className = 'lap-row' + (entry ? ' selected' : '');
     row.dataset.lapId = String(lap.id);
+    row.style.borderLeftColor = entry ? entry.color : 'transparent';
+
+    const dot = document.createElement('span');
+    dot.className = 'lap-color';
+    dot.style.background = entry ? entry.color : '#333';
 
     const numEl = document.createElement('span');
     numEl.className = 'lap-num-col';
@@ -181,31 +287,24 @@ async function populateLaps(lapsDiv, session) {
 
     const timeEl = document.createElement('span');
     timeEl.className = 'lap-time-col';
+    timeEl.style.color = entry ? entry.color : '#4af';
     timeEl.textContent = fmtMs(lap.lap_time_ms);
 
     const deltaEl = document.createElement('span');
     deltaEl.className = 'lap-delta-col' + (isBest ? ' lap-star' : '');
     deltaEl.textContent = fmtDelta(lap.lap_time_ms - best);
 
-    const btnsEl = document.createElement('span');
-    btnsEl.className = 'lap-row-btns';
-
-    const btnA = document.createElement('button');
-    btnA.className = 'btn-a';
-    btnA.textContent = 'A';
-    btnA.addEventListener('click', () => selectLap(lapWithCar, 'A'));
-
-    const btnB = document.createElement('button');
-    btnB.className = 'btn-b';
-    btnB.textContent = 'B';
-    btnB.addEventListener('click', () => selectLap(lapWithCar, 'B'));
-
-    btnsEl.appendChild(btnA);
-    btnsEl.appendChild(btnB);
+    row.appendChild(dot);
     row.appendChild(numEl);
     row.appendChild(timeEl);
     row.appendChild(deltaEl);
-    row.appendChild(btnsEl);
+
+    row.addEventListener('click', () => toggleLap(lapWithCar));
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (state.selected.has(lap.id)) setBaseline(lap.id);
+    });
+    row.title = 'Click to toggle \u00b7 Right-click to set as reference';
     lapsDiv.appendChild(row);
   });
 }
@@ -264,43 +363,22 @@ function renderSidebar() {
     hdr.addEventListener('click', async () => {
       const open = lapsDiv.classList.toggle('open');
       arrowEl.textContent = open ? '\u25bc' : '\u25b6';
-      if (open && !lapsDiv.children.length) await populateLaps(lapsDiv, session);
+      if (open && !lapsDiv.children.length) {
+        await populateLaps(lapsDiv, session);
+        // Auto-select all laps when expanding
+        await selectAllLaps(session);
+      }
     });
 
     wrapper.appendChild(hdr);
     wrapper.appendChild(lapsDiv);
     sidebar.appendChild(wrapper);
 
-    if (idx === 0) populateLaps(lapsDiv, session);
+    // Auto-expand and select most recent session
+    if (idx === 0) {
+      populateLaps(lapsDiv, session).then(() => selectAllLaps(session));
+    }
   });
-}
-
-async function fetchFrames(lap) {
-  if (state.cache[lap.id]) return state.cache[lap.id];
-  const frames = await fetch('/laps/' + lap.car_code + '/' + lap.lap_number + '/' + lap.id + '/frames').then(r => r.json());
-  state.cache[lap.id] = frames;
-  return frames;
-}
-
-async function selectLap(lap, slot) {
-  const frames = await fetchFrames(lap);
-  if (slot === 'A') state.lapA = { id: lap.id, frames };
-  else              state.lapB = { id: lap.id, frames };
-  updateButtonStates();
-  renderAll();
-}
-
-function updateButtonStates() {
-  document.querySelectorAll('.btn-a').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.btn-b').forEach(b => b.classList.remove('active'));
-  if (state.lapA) {
-    const el = document.querySelector('.lap-row[data-lap-id="' + state.lapA.id + '"] .btn-a');
-    if (el) el.classList.add('active');
-  }
-  if (state.lapB) {
-    const el = document.querySelector('.lap-row[data-lap-id="' + state.lapB.id + '"] .btn-b');
-    if (el) el.classList.add('active');
-  }
 }
 
 async function loadSidebar() {
@@ -317,14 +395,14 @@ async function loadSidebar() {
 
 loadSidebar();
 
-// ── Chart helpers ─────────────────────────────────────────────────────────────
+// ── Chart helpers ────────────────────────────────────────────────────────────
 const CHART_DEFS = [
-  { id: 'ch-speed',    fn: f => f.speed_mps * 3.6,           col: '#4af', yLbl: 'km/h' },
-  { id: 'ch-throttle', fn: f => f.throttle / 255 * 100,      col: '#4f4', yLbl: '%'    },
-  { id: 'ch-brake',    fn: f => f.brake    / 255 * 100,      col: '#f44', yLbl: '%'    },
-  { id: 'ch-gear',     fn: f => f.current_gear,               col: '#aaa', yLbl: ''     },
-  { id: 'ch-sway',     fn: f => f.sway,                       col: '#c8f', yLbl: 'm/s²' },
-  { id: 'ch-steer',    fn: f => f.wheel_rotation_radians,     col: '#fc8', yLbl: 'rad'  },
+  { id: 'ch-speed',    fn: f => f.speed_mps * 3.6,           yLbl: 'km/h' },
+  { id: 'ch-throttle', fn: f => f.throttle / 255 * 100,      yLbl: '%'    },
+  { id: 'ch-brake',    fn: f => f.brake    / 255 * 100,      yLbl: '%'    },
+  { id: 'ch-gear',     fn: f => f.current_gear,               yLbl: ''     },
+  { id: 'ch-sway',     fn: f => f.sway,                       yLbl: 'm/s\u00b2' },
+  { id: 'ch-steer',    fn: f => f.wheel_rotation_radians,     yLbl: 'rad'  },
 ];
 
 const BASE_OPTS = (yLbl) => ({
@@ -337,45 +415,49 @@ const BASE_OPTS = (yLbl) => ({
     },
   },
   scales: {
-    x: { type: 'linear', grid: { color: '#1e1e1e' },
-         ticks: { color: '#555', maxTicksLimit: 8 } },
+    x: { type: 'linear', title: { display: true, text: 'distance (m)', color: '#444' },
+         grid: { color: '#1e1e1e' }, ticks: { color: '#555', maxTicksLimit: 8 } },
     y: { title: { display: !!yLbl, text: yLbl, color: '#555' },
          grid: { color: '#1e1e1e' }, ticks: { color: '#555' } },
   },
   elements: { point: { radius: 0 }, line: { borderWidth: 1.5, tension: 0 } },
 });
 
-function mkDataset(frames, fn, color, label) {
+function mkDataset(frames, fn, color, label, isBaseline) {
   return {
     label,
     data: frames.map(f => ({ x: f.distance_m, y: fn(f) })),
     borderColor: color,
+    borderWidth: isBaseline ? 2.5 : 1.5,
+    borderDash: isBaseline ? [6, 3] : [],
     fill: false,
     spanGaps: false,
   };
 }
 
 function updateTraceCharts() {
+  // Render baseline last so it draws on top
+  const entries = [...state.selected.values()];
+  const sorted = entries.sort((a, b) =>
+    (a.id === state.baselineId ? 1 : 0) - (b.id === state.baselineId ? 1 : 0)
+  );
   CHART_DEFS.forEach(def => {
     if (charts[def.id]) { charts[def.id].destroy(); }
     charts[def.id] = new Chart(document.getElementById(def.id), {
       type: 'line',
-      data: { datasets: [
-        ...(state.lapA ? [mkDataset(state.lapA.frames, def.fn, COL_A, 'A')] : []),
-        ...(state.lapB ? [mkDataset(state.lapB.frames, def.fn, COL_B, 'B')] : []),
-      ]},
+      data: { datasets: sorted.map(e =>
+        mkDataset(e.frames, def.fn, e.color, e.label, e.id === state.baselineId)
+      )},
       options: BASE_OPTS(def.yLbl),
     });
   });
 }
 
-// ── Time delta ────────────────────────────────────────────────────────────────
+// ── Time delta (vs best selected lap) ────────────────────────────────────────
 function lerp(frames, targetDist) {
   if (!frames.length) return 0;
-  // Clamp to last frame if target exceeds track length
   if (targetDist >= frames[frames.length - 1].distance_m) return frames[frames.length - 1].ts;
   if (targetDist <= frames[0].distance_m) return frames[0].ts;
-
   let lo = 0, hi = frames.length - 1;
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1;
@@ -389,43 +471,60 @@ function lerp(frames, targetDist) {
 
 function updateDeltaChart() {
   if (charts['ch-delta']) { charts['ch-delta'].destroy(); delete charts['ch-delta']; }
-  if (!state.lapA || !state.lapB) return;
+  const entries = [...state.selected.values()];
+  if (entries.length < 2) return;
 
-  const fA = state.lapA.frames, fB = state.lapB.frames;
-  if (!fA.length || !fB.length) return;
-
-  const maxDist = Math.min(fA[fA.length - 1].distance_m, fB[fB.length - 1].distance_m);
-  const t0A = fA[0].ts, t0B = fB[0].ts;
-  const pts = [];
-
-  for (const f of fA) {
-    if (f.distance_m > maxDist) break;
-    const delta = (f.ts - t0A) - (lerp(fB, f.distance_m) - t0B);
-    pts.push({ x: f.distance_m, y: parseFloat(delta.toFixed(3)) });
+  // Use baseline as reference; fall back to fastest lap
+  let best = state.baselineId != null ? state.selected.get(state.baselineId) : null;
+  if (!best) {
+    best = entries.reduce((b, e) =>
+      (e.lap_time_ms != null && (b.lap_time_ms == null || e.lap_time_ms < b.lap_time_ms)) ? e : b
+    , entries[0]);
   }
+
+  const datasets = [];
+  for (const e of entries) {
+    if (e.id === best.id) continue;
+    if (!e.frames.length || !best.frames.length) continue;
+
+    const maxDist = Math.min(
+      e.frames[e.frames.length - 1].distance_m,
+      best.frames[best.frames.length - 1].distance_m
+    );
+    const t0E = e.frames[0].ts, t0B = best.frames[0].ts;
+    const pts = [];
+    for (const f of e.frames) {
+      if (f.distance_m > maxDist) break;
+      const delta = (f.ts - t0E) - (lerp(best.frames, f.distance_m) - t0B);
+      pts.push({ x: f.distance_m, y: parseFloat(delta.toFixed(3)) });
+    }
+    datasets.push({
+      data: pts,
+      borderColor: e.color,
+      label: e.label + ' vs best',
+      fill: false,
+      tension: 0, borderWidth: 1.5, pointRadius: 0,
+    });
+  }
+
+  if (!datasets.length) return;
 
   charts['ch-delta'] = new Chart(document.getElementById('ch-delta'), {
     type: 'line',
-    data: { datasets: [{
-      data: pts,
-      segment: { borderColor: ctx => ctx.p0.parsed.y > 0 ? '#f44' : '#4f4' },
-      fill: { target: { value: 0 }, above: '#f4422a', below: '#2a4f22' },
-      label: 'delta',
-      tension: 0, borderWidth: 1.5,
-      pointRadius: 0,
-    }]},
+    data: { datasets },
     options: BASE_OPTS('s'),
   });
 }
 
-// ── Track map ─────────────────────────────────────────────────────────────────
+// ── Track map ────────────────────────────────────────────────────────────────
 function drawTrackMap() {
   const canvas = document.getElementById('map-canvas');
   const ctx    = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  const allF = [...(state.lapA?.frames ?? []), ...(state.lapB?.frames ?? [])];
+  const entries = [...state.selected.values()];
+  const allF = entries.flatMap(e => e.frames);
   const xs   = allF.map(f => f.position_x).filter(v => v != null);
   const zs   = allF.map(f => f.position_z).filter(v => v != null);
   if (!xs.length) return;
@@ -439,33 +538,26 @@ function drawTrackMap() {
   const offZ = pad + (H - pad*2 - (maxZ - minZ) * sc) / 2;
   const proj = (x, z) => [offX + (x - minX) * sc, offZ + (z - minZ) * sc];
 
-  function speedColor(mps) {
-    const t = Math.min(1, (mps * 3.6) / 150);
-    return `rgb(${Math.round(t*255)},60,${Math.round((1-t)*255)})`;
-  }
-
-  function drawLap(frames, alpha) {
+  const alpha = Math.max(0.3, 1 - (entries.length - 1) * 0.15);
+  entries.forEach(e => {
     ctx.globalAlpha = alpha;
-    for (let i = 1; i < frames.length; i++) {
-      const f  = frames[i], fp = frames[i-1];
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = 2;
+    for (let i = 1; i < e.frames.length; i++) {
+      const f = e.frames[i], fp = e.frames[i-1];
       if (f.position_x == null || fp.position_x == null) continue;
       const [x0,y0] = proj(fp.position_x, fp.position_z);
-      const [x1,y1] = proj(f.position_x,  f.position_z);
+      const [x1,y1] = proj(f.position_x, f.position_z);
       ctx.beginPath();
-      ctx.strokeStyle = speedColor(f.speed_mps ?? 0);
-      ctx.lineWidth   = 2;
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
       ctx.stroke();
     }
-    ctx.globalAlpha = 1;
-  }
-
-  if (state.lapA) drawLap(state.lapA.frames, state.lapB ? 0.75 : 1.0);
-  if (state.lapB) drawLap(state.lapB.frames, state.lapA ? 0.55 : 1.0);
+  });
+  ctx.globalAlpha = 1;
 }
 
-// ── Synchronized crosshair ────────────────────────────────────────────────────
+// ── Synchronized crosshair ───────────────────────────────────────────────────
 function attachCrosshair() {
   const all = Object.values(charts);
   all.forEach(source => {
@@ -488,16 +580,36 @@ function attachCrosshair() {
 // ── Legend ────────────────────────────────────────────────────────────────────
 function updateLegend() {
   const el = document.getElementById('legend');
-  el.style.display = (state.lapA || state.lapB) ? 'flex' : 'none';
-  document.getElementById('leg-a').textContent =
-    state.lapA ? `A \u2014 ${fmtMs(state.lapA.frames.at(-1)?.last_lap_time_ms)}` : 'A (none)';
-  document.getElementById('leg-b').textContent =
-    state.lapB ? `B \u2014 ${fmtMs(state.lapB.frames.at(-1)?.last_lap_time_ms)}` : 'B (none)';
+  while (el.firstChild) el.removeChild(el.firstChild);
+  const entries = [...state.selected.values()];
+  if (!entries.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  entries.forEach(e => {
+    const isBase = e.id === state.baselineId;
+    const item = document.createElement('span');
+    item.className = 'leg-item';
+    const dot = document.createElement('span');
+    dot.className = 'leg-dot';
+    dot.style.background = e.color;
+    if (isBase) dot.style.outline = '2px solid #fff';
+    const lbl = document.createElement('span');
+    lbl.textContent = e.label + (isBase ? ' [REF]' : '');
+    lbl.style.color = e.color;
+    if (isBase) lbl.style.fontWeight = 'bold';
+    item.appendChild(dot);
+    item.appendChild(lbl);
+    el.appendChild(item);
+  });
+  const hint = document.createElement('span');
+  hint.id = 'leg-hint';
+  hint.textContent = 'Scroll to zoom \u00b7 drag to pan \u00b7 click laps to toggle';
+  el.appendChild(hint);
 }
 
-// ── renderAll ─────────────────────────────────────────────────────────────────
+// ── renderAll ────────────────────────────────────────────────────────────────
 function renderAll() {
-  document.getElementById('placeholder')?.remove();
+  const ph = document.getElementById('placeholder');
+  if (state.selected.size > 0 && ph) ph.remove();
   updateLegend();
   updateTraceCharts();
   updateDeltaChart();

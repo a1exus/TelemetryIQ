@@ -24,8 +24,8 @@
                   padding: 0.12rem 0.4rem; border: 1px solid #1a4a8a; border-radius: 3px; }
   #compare-link:hover { color: #8cf; }
 
-  /* ── Top zone (60%) ───────────────────────────────────── */
-  #top-zone { flex: 0 0 60%; display: flex; flex-direction: column;
+  /* ── Top zone (full height) ────────────────────────────── */
+  #top-zone { flex: 1; display: flex; flex-direction: column;
               gap: 0.3rem; padding: 0.3rem 0.5rem; overflow: hidden; min-height: 0; }
 
   /* ── Shift bar ────────────────────────────────────────── */
@@ -118,18 +118,6 @@
   .ext-val { color: #ccc; font-weight: bold; }
   .hidden { display: none !important; }
 
-  /* ── Bottom zone (40%) ────────────────────────────────── */
-  #bottom-zone { flex: 0 0 40%; display: flex; flex-direction: column;
-                 gap: 0.25rem; padding: 0.3rem 0.5rem;
-                 border-top: 1px solid #1a1a1a; min-height: 0; overflow: hidden; }
-  #chart-placeholder { color: #444; font-size: 0.75rem; text-align: center;
-                       margin: auto; }
-  .chart-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column;
-                background: #111; border: 1px solid #1e1e1e; border-radius: 4px;
-                padding: 0.3rem 0.4rem; }
-  .chart-lbl  { font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.1em;
-                color: #555; margin-bottom: 0.15rem; flex-shrink: 0; }
-  canvas { flex: 1; min-height: 0; }
 </style>
 </head>
 <body>
@@ -225,13 +213,6 @@
         <div class="ext-row"><span class="ext-lbl">Water</span>   <span class="ext-val" id="e-water">--</span></div>
         <div class="ext-row"><span class="ext-lbl">Boost</span>   <span class="ext-val" id="e-boost">--</span></div>
       </div>
-      <div class="ext-card">
-        <h4>Car state</h4>
-        <div class="ext-row"><span class="ext-lbl">Car code</span>  <span class="ext-val" id="e-car-code">--</span></div>
-        <div class="ext-row"><span class="ext-lbl">Heartbeat</span> <span class="ext-val" id="e-hb">--</span></div>
-        <div class="ext-row"><span class="ext-lbl">Start pos</span> <span class="ext-val" id="e-race-start">--</span></div>
-        <div class="ext-row"><span class="ext-lbl">Cars</span>      <span class="ext-val" id="e-total-cars">--</span></div>
-      </div>
       <div class="ext-card hidden" id="e-card-motion">
         <h4>Body motion (HB-B)</h4>
         <div class="ext-row"><span class="ext-lbl">Steering (rad)</span><span class="ext-val" id="e-steer">--</span></div>
@@ -249,20 +230,8 @@
 
   </div><!-- #top-zone -->
 
-  <div id="bottom-zone">
-    <p id="chart-placeholder">Waiting for lap data&#8230;</p>
-    <div class="chart-wrap hidden" id="chart-tb-wrap">
-      <p class="chart-lbl" id="lbl-tb">Throttle (green) / Brake (red) &#8212; %</p>
-      <canvas id="chart-tb"></canvas>
-    </div>
-    <div class="chart-wrap hidden" id="chart-spd-wrap">
-      <p class="chart-lbl" id="lbl-spd">Speed &#8212; km/h</p>
-      <canvas id="chart-spd"></canvas>
-    </div>
-  </div>
 
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 'use strict';
 
@@ -272,17 +241,9 @@ const maxDelay = 30000;
 
 // ── Lap timer ──────────────────────────────────────────────
 let prevOnTrack = false;
-let prevLap     = null;   // for lapOffset reset detection
-let prevRawLap  = null;   // raw d.current_lap — chart trigger, no offset applied
+let prevLap     = null;
 let lapOffset   = 0;
 
-// ── Chart instances ────────────────────────────────────────
-const charts = {};  // { tb: Chart|null, spd: Chart|null }
-
-// ── Live frame accumulation ─────────────────────────────────
-let liveFrames = [];
-let liveDist   = 0;
-let liveTs     = null;
 
 // ── Shift bar ──────────────────────────────────────────────
 const SEG_COLORS = ['grn','grn','grn','grn','grn','grn','grn','amb','amb','amb','red','red'];
@@ -332,102 +293,6 @@ function set(id, v, fb = '--') {
   if (el) el.textContent = (v == null) ? fb : v;
 }
 
-// ── Chart helpers ──────────────────────────────────────────
-const CHART_OPTS = {
-  responsive: true, maintainAspectRatio: false, animation: false,
-  plugins: { legend: { display: false } },
-  scales: {
-    x: { type: 'linear', grid: { color: '#1e1e1e' },
-         ticks: { color: '#555', maxTicksLimit: 6 } },
-    y: { grid: { color: '#1e1e1e' }, ticks: { color: '#555' } },
-  },
-  elements: { point: { radius: 0 }, line: { borderWidth: 1.5, tension: 0 } },
-};
-
-function mkDs(frames, fn, color) {
-  return { data: frames.map(f => ({ x: f.distance_m, y: fn(f) })),
-           borderColor: color, fill: false, spanGaps: false };
-}
-
-async function updateCharts() {
-  let laps;
-  try { laps = await fetch('/laps').then(r => r.json()); } catch { return; }
-  if (!laps.length) return;  // normal on 0→1 race-start increment
-
-  const lastLap = laps[0];  // server returns newest first
-  const bestLap = laps.reduce((b, l) => {
-    if (l.lap_time_ms == null) return b;
-    if (b.lap_time_ms == null) return l;
-    return l.lap_time_ms < b.lap_time_ms ? l : b;
-  }, laps[0]);
-
-  let framesLast, framesBest;
-  try {
-    if (lastLap.id === bestLap.id) {
-      framesLast = framesBest = await fetch(`/laps/${lastLap.id}/frames`).then(r => r.json());
-    } else {
-      [framesLast, framesBest] = await Promise.all([
-        fetch(`/laps/${lastLap.id}/frames`).then(r => r.json()),
-        fetch(`/laps/${bestLap.id}/frames`).then(r => r.json()),
-      ]);
-    }
-
-    // Reveal charts, remove placeholder, update labels
-    document.getElementById('chart-placeholder')?.remove();
-    ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
-      document.getElementById(id).classList.remove('hidden'));
-    document.getElementById('lbl-tb').textContent  = 'Throttle (green) / Brake (red) \u2014 % \u00b7 last lap';
-    document.getElementById('lbl-spd').textContent = 'Speed \u2014 km/h \u00b7 blue\u202f=\u202flast \u00a0 orange\u202f=\u202fbest';
-
-    const tbDs = [
-      mkDs(framesLast, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
-      mkDs(framesLast, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
-    ];
-    const spdDs = [
-      mkDs(framesLast, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
-      mkDs(framesBest, f => (f.speed_mps ?? 0) * 3.6, '#fa4'),
-    ];
-
-    if (!charts.tb) {
-      charts.tb  = new Chart(document.getElementById('chart-tb'),
-        { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
-      charts.spd = new Chart(document.getElementById('chart-spd'),
-        { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
-    } else {
-      charts.tb.data.datasets  = tbDs;  charts.tb.update();
-      charts.spd.data.datasets = spdDs; charts.spd.update();
-    }
-  } catch { return; }
-}
-
-function drawLive() {
-  if (!liveFrames.length) return;
-  document.getElementById('chart-placeholder')?.remove();
-  ['chart-tb-wrap', 'chart-spd-wrap'].forEach(id =>
-    document.getElementById(id).classList.remove('hidden'));
-  const suffix = ' \u00b7 live';
-  document.getElementById('lbl-tb').textContent  = 'Throttle (green) / Brake (red) \u2014 %' + suffix;
-  document.getElementById('lbl-spd').textContent = 'Speed \u2014 km/h' + suffix;
-  const tbDs = [
-    mkDs(liveFrames, f => (f.throttle ?? 0) / 255 * 100, '#4f4'),
-    mkDs(liveFrames, f => (f.brake    ?? 0) / 255 * 100, '#f44'),
-  ];
-  const spdDs = [
-    mkDs(liveFrames, f => (f.speed_mps ?? 0) * 3.6, '#4af'),
-  ];
-  if (!charts.tb) {
-    charts.tb  = new Chart(document.getElementById('chart-tb'),
-      { type: 'line', data: { datasets: tbDs  }, options: CHART_OPTS });
-    charts.spd = new Chart(document.getElementById('chart-spd'),
-      { type: 'line', data: { datasets: spdDs }, options: CHART_OPTS });
-  } else {
-    charts.tb.data.datasets  = tbDs;  charts.tb.update();
-    charts.spd.data.datasets = spdDs; charts.spd.update();
-  }
-}
-
-setInterval(drawLive, 1000);
-
 // ── WebSocket ──────────────────────────────────────────────
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -435,19 +300,7 @@ function connect() {
   const sEl   = document.getElementById('status');
   ws.onopen  = () => { sEl.textContent = '\u25cf Connected';
                        sEl.className = 'connected'; retryDelay = 1000; };
-  ws.onmessage = e => {
-    const d = JSON.parse(e.data);
-    // Accumulate live frames with incrementally computed distance
-    if (d.cars_on_track && d.speed_mps != null) {
-      if (liveTs !== null && d.ts != null) {
-        const dt = d.ts - liveTs;
-        if (dt > 0 && dt < 0.1) liveDist += d.speed_mps * dt;
-      }
-      liveTs = d.ts ?? null;
-      liveFrames.push({ ...d, distance_m: Math.round(liveDist * 100) / 100 });
-    }
-    latest = d;
-  };
+  ws.onmessage = e => { latest = JSON.parse(e.data); };
   ws.onclose   = () => {
     sEl.textContent = `\u25cf Reconnecting (${(retryDelay/1000)|0}s)\u2026`;
     sEl.className = 'disconnected';
@@ -465,22 +318,14 @@ function render() {
     if (onTrack && !prevOnTrack) {
       lapOffset  = (d.current_lap ?? 1) - 1;
       prevLap    = d.current_lap;
-      prevRawLap = d.current_lap;
     } else if (onTrack && d.current_lap !== prevLap && prevLap !== null) {
       prevLap    = d.current_lap;
     } else if (onTrack && prevLap === null) {
       prevLap    = d.current_lap;
-      prevRawLap = d.current_lap;
     }
     if (!onTrack) { prevLap = null; prevRawLap = null; }
     prevOnTrack = onTrack;
 
-    // Chart trigger: raw current_lap increment → flush live, load completed + best
-    if (onTrack && prevRawLap !== null && d.current_lap !== prevRawLap) {
-      prevRawLap = d.current_lap;
-      liveFrames = []; liveDist = 0; liveTs = null;
-      updateCharts();
-    }
 
     const displayLap = onTrack ? Math.max(1, (d.current_lap ?? 1) - lapOffset) : '--';
     const runningMs  = (onTrack && d.lap_started_at != null)
@@ -553,12 +398,6 @@ function render() {
     set('e-oil-pres',  d.oil_pressure  != null ? d.oil_pressure.toFixed(2)              : null);
     set('e-water',     d.water_temp    != null ? d.water_temp.toFixed(1)    + ' \u00b0C' : null);
     set('e-boost',     d.boost_pressure != null ? d.boost_pressure.toFixed(2)            : null);
-
-    // Extra — Car state
-    set('e-car-code',   d.car_code);
-    set('e-hb',         d.heartbeat_type);
-    set('e-race-start', d.race_start_pos);
-    set('e-total-cars', d.total_cars);
 
     // Extra — Body motion (HB-B)
     const isB = d.heartbeat_type === 'B';
