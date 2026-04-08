@@ -1,4 +1,4 @@
-"""TelemetryIQ entrypoint — wires all Phase 2 components."""
+"""TelemetryIQ entrypoint — wires all components."""
 from __future__ import annotations
 
 import asyncio

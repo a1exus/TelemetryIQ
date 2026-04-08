@@ -12,27 +12,12 @@ and more.
   **Settings → Options → Machine → BD-ROM / PS5 Activity → GT7 UDP Telemetry → On**
 - PlayStation and your machine on the same LAN
 
-## macOS / Windows
-
-Docker Desktop on macOS and Windows runs containers inside a Linux VM that is not on the
-same network as the host, so PS5 UDP telemetry cannot reach the container. Run directly
-on the host instead.
+## Quick Start
 
 ```shell
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 cp .env.example .env   # set PS_IP if auto-discovery doesn't work
-python -m rexy
-```
-
-## Linux / Raspberry Pi (Docker)
-
-```shell
-cp .env.example .env
-# Edit .env — set PS_IP if auto-discovery doesn't work
-make build
-make up
-make logs
+make install
+make run
 ```
 
 ## Web UI
@@ -137,6 +122,7 @@ PlayStation (GT7, ~60 Hz UDP)
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; serialises frames; wires all game/race event callbacks |
+| Dispatcher | `rexy/dispatcher.py` | Drains raw_queue; drop-oldest into ws_queue; calls `LapRecorder.on_frame()` |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; buffers frames; flushes to SQLite on lap change |
 | Repository | `rexy/repository.py` | All SQLite reads and writes; schema migrations via `user_version` |
 | FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `PATCH /sessions/{id}`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |

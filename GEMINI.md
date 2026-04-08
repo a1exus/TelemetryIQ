@@ -4,11 +4,15 @@ This document provides essential context and instructions for AI agents working 
 
 ## Project Overview
 
-**TelemetryIQ** (package name `rexy`) is a GT7 telemetry recorder and lap analysis tool. It captures UDP telemetry from PlayStation via `gt-telem`, records full telemetry per lap to SQLite, streams live data over WebSocket, and enables lap-over-lap comparison.
+**TelemetryIQ** (package name `rexy`) is a GT7 telemetry recorder and
+lap analysis tool. It captures UDP telemetry from PlayStation via
+`gt-telem`, records full telemetry per lap to SQLite, streams live data
+over WebSocket, and enables lap-over-lap comparison.
 
 - **Primary Technologies:** Python 3.10+, `gt-telem`, FastAPI, SQLite (`aiosqlite`), Docker Compose.
-- **Status:** Phase 2 (Recording) implementation in progress. Phase 1 (Foundation) complete.
-- **Specs:** `specs.md` is the authoritative source for requirements. Detailed phase designs and "Superpower" plans are in `docs/superpowers/`.
+- **Status:** Phases 1–5 complete. Phase 6 (lap data export) planned.
+- **Specs:** `specs.md` is the authoritative source for requirements.
+  Phase designs and plans are in `docs/superpowers/`.
 
 ## Architecture & Flow
 
@@ -39,16 +43,26 @@ PlayStation (GT7, ~60Hz UDP)
 
 ## Key Files & Responsibilities
 
-- `rexy/__main__.py`: App entrypoint; creates session row; wires tasks; handles shutdown.
-- `rexy/client.py`: Wraps `TurismoClient`; sync callbacks; `call_soon_threadsafe` for queue/lifecycle ops; `telemetry_to_dict` serializer.
+- `rexy/__main__.py`: App entrypoint; wires tasks; handles shutdown.
+- `rexy/client.py`: Wraps `TurismoClient`; sync callbacks;
+  `call_soon_threadsafe` for queue/lifecycle ops.
 - `rexy/dispatcher.py`: Drains `raw_queue`; drop-oldest to `ws_queue`; calls `LapRecorder.on_frame()`.
-- `rexy/recorder.py`: `LapRecorder`: IDLE/RECORDING state machine; buffer-before-await pattern for lap flushes.
-- `rexy/repository.py`: `TelemetryRepository`: persistent `aiosqlite` connection; CRUD for sessions, laps, and frames.
-- `rexy/server.py`: FastAPI server; `/ws` broadcaster task; maintains client set.
-- `rexy/static/index.html`: Single-page vanilla JS/Canvas dashboard; rAF render loop.
+- `rexy/recorder.py`: `LapRecorder`: session/lap lifecycle;
+  buffers frames and flushes to SQLite.
+- `rexy/repository.py`: `TelemetryRepository`: `aiosqlite` connection;
+  schema migrations via `user_version` (v3); CRUD for sessions, laps, frames.
+- `rexy/server.py`: FastAPI server; `/ws` broadcaster; REST API
+  (`/sessions`, `/sessions/{id}/laps`, `/laps`, `/laps/.../frames`,
+  `PATCH /sessions/{id}`); serves static files.
+- `rexy/static/index.html`: Live HUD — speed, RPM, gear, pedals,
+  tires, lap timer.
+- `rexy/static/compare.html`: N-lap overlay analysis — session browser,
+  auto-diff, session notes, track/car filters, trace charts, delta,
+  track map.
+- `rexy/static/cars.json`, `tracks.json`: Car/track name lookups (559 cars, 106 tracks from gran-turismo.com).
 - `specs.md`: Authoritative source for requirements, architecture, and telemetry fields.
 - `plan.md`: High-level roadmap and phase definitions.
-- `tasks/`: Individual task files per phase (e.g., `01-*.md`, `02-*.md`).
+- `tasks/`: Individual task files per phase (e.g., `01-*.md`, `02-*.md`, `03-*.md`).
 - `docs/superpowers/`: Detailed phase designs, deep-dive specs, and architectural decisions.
 
 ## Configuration (.env)
@@ -57,28 +71,15 @@ PlayStation (GT7, ~60Hz UDP)
 | --- | --- | --- |
 | `PS_IP` | PlayStation IP address (optional if auto-discovery works) | (None) |
 | `GT7_HEARTBEAT_TYPE` | `A` (standard), `B` (motion), or `~` (filtered + energy) | `B` |
+| `DB_PATH` | SQLite database path | `./telemetry.db` |
 
 ## Development & Operations
 
 ### Common Commands (Makefile)
 
-- `make install`: Set up local venv and install package in editable mode.
-- `make build`: Build Docker images.
-- `make up`: Start containers in background.
-- `make restart`: Restart containers (down + up).
-- `make logs`: Follow container logs.
-- `make down`: Stop and remove containers.
-
-### Platform-Specific Running
-
-- **macOS / Windows (Host-side):** Docker Desktop cannot receive PS5 UDP. `gt-telem` must run on the host directly.
-  ```bash
-  source .venv/bin/activate && python -m rexy
-  ```
-- **Linux / Raspberry Pi (Docker):** Uses `network_mode: host` for direct UDP access.
-  ```bash
-  make build && make up && make logs
-  ```
+- `make install`: Create `.venv` and install dependencies.
+- `make run`: Start TelemetryIQ (`python -m rexy`).
+- `make test`: Run tests (`pytest tests/ -v`).
 
 ## GT7 Connectivity Requirements
 
@@ -95,5 +96,7 @@ PlayStation (GT7, ~60Hz UDP)
 
 ## Workspace Agents
 
-- **Explore:** Fast read-only codebase exploration. Usage: `Explore: <thoroughness (quick/medium/thorough)> - <what you are looking for>`
-- **Directives:** When implementing a phase, ensure you've read the corresponding `tasks/*.md` file and updated the status when complete.
+- **Explore:** Fast read-only codebase exploration.
+  Usage: `Explore: <thoroughness> - <what you are looking for>`
+- **Directives:** When implementing a phase, read the corresponding
+  `tasks/*.md` file and update the status when complete.

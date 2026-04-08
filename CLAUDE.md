@@ -17,29 +17,10 @@ per lap to SQLite and enables lap-over-lap comparison.
 
 ## Commands
 
-All Docker-based workflows use `make`:
-
 ```bash
-make build    # docker compose build
-make up       # docker compose up -d
-make down     # docker compose down
-make logs     # docker compose logs -f
-make restart  # down + up
-make install  # create .venv and pip install -r requirements.txt (macOS/Windows local dev only)
-```
-
-Run directly (macOS/Windows only — Docker Desktop can't receive PS5 UDP):
-
-```bash
-source .venv/bin/activate
-python -m rexy
-```
-
-Run tests:
-
-```bash
-source .venv/bin/activate
-python -m pytest tests/ -v
+make install  # create .venv and pip install -r requirements.txt
+make run      # python -m rexy
+make test     # pytest tests/ -v
 ```
 
 ## Architecture
@@ -59,6 +40,7 @@ GT7 (UDP ~60 Hz) → TurismoClient (gt-telem, sync callbacks)
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; sync callbacks dispatch to asyncio via `call_soon_threadsafe`; logs all events to stdout |
+| Dispatcher | `rexy/dispatcher.py` | Drains raw_queue; drop-oldest into ws_queue; calls `LapRecorder.on_frame()` |
 | FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST API; serves static files |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; lap lifecycle; buffers frames and flushes to SQLite |
 | Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (currently v3) |

@@ -8,7 +8,7 @@ full telemetry per lap to SQLite and enables lap-over-lap comparison — modelle
 on professional motorsport tools (MoTeC i2, AiM Race Studio) and the official
 [GT7 Data Logger](https://www.gran-turismo.com/us/news/00_5736734.html).
 
-**Last updated:** 2026-03-22
+**Last updated:** 2026-04-07
 
 ### Core Use Cases
 
@@ -197,9 +197,10 @@ PlayStation (GT7, ~60 Hz UDP)
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Telemetry client | `rexy/client.py` | Wraps `TurismoClient`; sync callbacks dispatch to asyncio via `call_soon_threadsafe`; pushes frames to queue; logs all gt-telem events to stdout |
+| Dispatcher | `rexy/dispatcher.py` | Drains raw_queue; drop-oldest into ws_queue; calls `LapRecorder.on_frame()` |
 | FastAPI server | `rexy/server.py` | WebSocket `/ws`; broadcaster loop; REST API; serves static files |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle (`start_session`/`close_session`); lap lifecycle (`reset_and_new_lap`/`flush_and_new_lap`); buffers frames; flushes to SQLite |
-| Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (v2); CRUD for sessions, laps, frames |
+| Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (v3); CRUD for sessions, laps, frames |
 | Live HUD | `rexy/static/index.html` | All telemetry fields; WS reconnect with exponential backoff; post-lap Chart.js overlay |
 | Analysis dashboard | `rexy/static/compare.html` | Session browser sidebar; distance-based trace charts; time delta; track map; synchronized crosshair |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups |
@@ -232,9 +233,10 @@ SQLite `user_version` PRAGMA tracks the schema version. On startup:
 
 | Version | Action |
 | --- | --- |
-| 0 | Fresh install: create all tables at current schema, set `user_version = 2` |
-| 1 | Migrate: `ALTER TABLE sessions ADD COLUMN track_id/car_code/completed_at`, set `user_version = 2` |
-| 2 | Current — no-op |
+| 0 | Fresh install: create all tables at current schema, set `user_version = 3` |
+| 1 | Migrate: `ALTER TABLE sessions ADD COLUMN track_id/car_code/completed_at/notes`, set `user_version = 3` |
+| 2 | Migrate: `ALTER TABLE sessions ADD COLUMN notes TEXT`, set `user_version = 3` |
+| 3 | Current — no-op |
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-High-level implementation plan for TelemetryIQ. Phase 1 is done; Phases 2–4 build toward a full lap analysis tool. Tasks are tracked in `tasks/`.
+High-level implementation plan for TelemetryIQ. All five phases are complete. Phase 6 (lap data export) is planned.
 
 ## Phases
 
@@ -11,31 +11,34 @@ High-level implementation plan for TelemetryIQ. Phase 1 is done; Phases 2–4 bu
 - **Deliverables**: Repo layout, dependencies, Docker Compose, `python -m rexy` connects to GT7 telemetry and streams to stdout.
 - **Tasks**: See `tasks/01-*.md`.
 
-### Phase 2: Recording
+### Phase 2: Recording ✅
 
-- Persist full telemetry per lap to SQLite on `on_lap_change` event.
-- Minimal live view via WebSocket (speed, RPM, gear, lap time) — enough to confirm the connection is working.
+- Full telemetry recording per lap to SQLite on `on_lap_change` event.
+- Live HUD via WebSocket; FastAPI server with broadcaster.
 - **Tasks**: See `tasks/02-*.md`.
 
-### Phase 3: Analysis Dashboard
+### Phase 3: Analysis Dashboard ✅
 
-- Full live telemetry display (all fields).
-- Lap selector; two-lap overlay comparison (throttle, brake, speed, RPM traces).
-- Gap graph; driving line from `position_x/y/z`.
+- N-lap overlay comparison (speed, throttle, brake, gear, lateral G, steering traces).
+- Distance-based x-axis, time delta graph, track map, crosshair sync.
 - **Tasks**: See `tasks/03-*.md`.
 
-### Phase 4: Setup Comparison
+### Phase 4: Sessions ✅
 
-- Car setup tagging per recorded lap.
-- Setup-vs-setup comparison on the same track.
-- Lap data export.
-- **Tasks**: See `tasks/04-*.md`.
+- Sessions as first-class entities with car/track identity.
+- Session browser sidebar on `/compare`.
+- `GET /sessions`, `GET /sessions/{id}/laps` endpoints.
 
-## Dependencies
+### Phase 5: Setup Comparison ✅
 
-- Phase 2 depends on Phase 1.
-- Phase 3 depends on Phase 2 (needs recorded laps to compare).
-- Phase 4 depends on Phase 3.
+- Auto-diff banner detecting gear ratio, top speed, max speed changes between sessions.
+- Session notes (free-text per session) with inline editing.
+- Track/car filtering in session browser.
+- `PATCH /sessions/{id}` endpoint for notes.
+
+### Phase 6: Lap Data Export (planned)
+
+- Export lap data for external analysis tools.
 
 ## Tech stack
 
@@ -57,3 +60,4 @@ High-level implementation plan for TelemetryIQ. Phase 1 is done; Phases 2–4 bu
 | 2025-03-15 | Initial plan |
 | 2025-03-15 | Aligned with gt-telem; added tech stack and PS discovery error mitigation |
 | 2026-03-16 | Rethought phases: recording first, analysis second, setup comparison fourth |
+| 2026-04-07 | Updated all phases to reflect completion; added Phases 4–6 |
