@@ -47,8 +47,8 @@ the north star for TelemetryIQ.
 > *Article example:* Increasing front downforce allowed later braking, cleaner
 > turn-in without understeer, earlier throttle — 0.3s improvement.
 
-**Status:** Visualization exists. Missing: setup tagging per session/lap so
-the user can identify *which* setup produced each lap. Planned for Phase 4.2.
+**Status:** Visualization exists. Next: free-text session notes so the user
+can record what they changed (Phase 4.2). Gear ratio changes auto-detected.
 
 ---
 
@@ -135,11 +135,25 @@ and a two-color track map.
 
 See `AGENTS.md` for refresh instructions when GT7 adds new cars/tracks.
 
-### Setup *(Phase 4.2 — planned)*
+### Setup Notes *(Phase 4.2 — next)*
 
-Car configuration metadata tied to a session or lap. Enables the "Compare Car
-Settings" use case. Details TBD — at minimum: optional free-text notes field
-per session; stretch: structured fields for suspension, downforce, tire type.
+Free-text notes per session enabling the "Compare Car Settings" use case.
+The driver records what they changed (e.g. "front DF +5, softer rear springs")
+after each garage visit. Notes appear in the session browser and in the
+comparison view header when overlaying laps from different sessions.
+
+| Field | Type | Source |
+| --- | --- | --- |
+| `sessions.notes` | text (nullable) | User input via UI |
+
+Design rationale: GT7 does not export setup files — there is no API or file
+to read car settings programmatically. Manual free-text is the only reliable
+option. One field covers 90% of the value; structured fields (dropdown per
+setting category) can be added later if usage warrants it.
+
+Automatic detection: gear ratios (`gear1`–`gear8`) are in telemetry and can
+be compared across sessions without user input. Flag gear ratio changes
+automatically in the comparison view.
 
 ---
 
@@ -295,7 +309,8 @@ Non-obvious design choices and why they were made.
 | Analysis dashboard: trace charts, delta, track map | Done |
 | Sessions with car/track identity; session browser UI | Done |
 | Static car/track name lookup (559 cars, 106 tracks) | Done |
-| **Setup tagging + setup comparison** | **Next** |
+| **Session notes + gear ratio auto-detect** | **Next** |
+| Structured setup fields (if notes prove insufficient) | Planned |
 | Lap data export | Planned |
 
 ---
