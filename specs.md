@@ -135,7 +135,7 @@ and a two-color track map.
 
 See `AGENTS.md` for refresh instructions when GT7 adds new cars/tracks.
 
-### Setup Notes *(Phase 4.2 — next)*
+### Setup Notes
 
 Free-text notes per session enabling the "Compare Car Settings" use case.
 The driver records what they changed (e.g. "front DF +5, softer rear springs")
@@ -209,10 +209,11 @@ PlayStation (GT7, ~60 Hz UDP)
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| `GET` | `/sessions` | `[{id, started_at, completed_at, track_id, car_code, lap_count, best_lap_time_ms}]` |
+| `GET` | `/sessions` | `[{id, started_at, completed_at, track_id, car_code, notes, lap_count, best_lap_time_ms}]` |
 | `GET` | `/sessions/{id}/laps` | `[{id, lap_number, lap_time_ms}]` — complete laps, `lap_number > 0` |
 | `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, started_at}]` |
 | `GET` | `/laps/{car_code}/{lap_number}/{lap_id}/frames` | `[{seq, ...all fields..., distance_m}]` |
+| `PATCH` | `/sessions/{id}` | Update session notes. Body: `{"notes": "..."}`. Returns `{"ok": true}` or 404/422. |
 
 ### Rendering Stack
 
@@ -309,7 +310,7 @@ Non-obvious design choices and why they were made.
 | Analysis dashboard: trace charts, delta, track map | Done |
 | Sessions with car/track identity; session browser UI | Done |
 | Static car/track name lookup (559 cars, 106 tracks) | Done |
-| **Session notes + gear ratio auto-detect** | **Next** |
+| Session notes + auto-diff (gear ratios, speeds) + session filtering | Done |
 | Structured setup fields (if notes prove insufficient) | Planned |
 | Lap data export | Planned |
 

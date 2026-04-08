@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Week of 2026-04-07]
+## [Week of 2026-04-07] — Phase 4.2
+
+### Added
+
+- **Auto-diff banner** in /compare: automatically detects gear ratio, top speed,
+  and max speed changes when comparing laps from different sessions
+- **Session notes**: free-text notes per session with inline edit in sidebar
+  and comparison header showing notes when overlaying different sessions
+- **Session filtering**: filter sidebar by track and car for faster navigation
+- `PATCH /sessions/{id}` endpoint for updating session notes
+- Schema migration v2→v3: adds `notes` column to sessions table
 
 ### Changed
 
