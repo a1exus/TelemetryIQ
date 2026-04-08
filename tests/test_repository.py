@@ -42,7 +42,7 @@ async def _make_v1_db(path: str) -> None:
         await db.execute("PRAGMA user_version = 1")
 
 
-async def test_migration_v1_to_v2_adds_columns():
+async def test_migration_v1_to_v3():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         path = f.name
     try:
@@ -54,29 +54,89 @@ async def test_migration_v1_to_v2_adds_columns():
         async with aiosqlite.connect(path) as db:
             cur = await db.execute("PRAGMA user_version")
             version = (await cur.fetchone())[0]
-            assert version == 2
+            assert version == 3
 
             cur = await db.execute("PRAGMA table_info(sessions)")
             cols = {row[1] for row in await cur.fetchall()}
             assert "track_id" in cols
             assert "car_code" in cols
             assert "completed_at" in cols
+            assert "notes" in cols
     finally:
         os.unlink(path)
 
 
-async def test_migration_v2_is_noop():
-    """Running init() on a v2 DB must not raise."""
+async def _make_v2_db(path: str) -> None:
+    """Create a version-2 database (sessions without notes column)."""
+    async with aiosqlite.connect(path) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("""
+            CREATE TABLE sessions (
+                id           INTEGER PRIMARY KEY,
+                started_at   REAL NOT NULL,
+                track_id     INTEGER,
+                car_code     INTEGER,
+                completed_at REAL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE laps (
+                id           INTEGER PRIMARY KEY,
+                session_id   INTEGER NOT NULL REFERENCES sessions(id),
+                lap_number   INTEGER NOT NULL,
+                track_id     INTEGER,
+                started_at   REAL    NOT NULL,
+                completed_at REAL,
+                lap_time_ms  INTEGER,
+                car_code     INTEGER,
+                is_complete  INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE frames (
+                lap_id INTEGER NOT NULL, seq INTEGER NOT NULL, ts REAL NOT NULL,
+                PRIMARY KEY (lap_id, seq)
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_laps_is_complete ON laps(is_complete)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_laps_complete_track ON laps(is_complete, track_id, lap_time_ms)")
+        await db.commit()
+        await db.execute("PRAGMA user_version = 2")
+
+
+async def test_migration_v2_to_v3_adds_notes_column():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         path = f.name
     try:
-        await _make_v1_db(path)
+        await _make_v2_db(path)
         repo = TelemetryRepository(path)
-        await repo.init()   # v1 -> v2
+        await repo.init()
+        await repo.close()
+
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("PRAGMA user_version")
+            version = (await cur.fetchone())[0]
+            assert version == 3
+
+            cur = await db.execute("PRAGMA table_info(sessions)")
+            cols = {row[1] for row in await cur.fetchall()}
+            assert "notes" in cols
+    finally:
+        os.unlink(path)
+
+
+async def test_migration_v3_is_noop():
+    """Running init() on a v3 DB must not raise."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    try:
+        await _make_v2_db(path)
+        repo = TelemetryRepository(path)
+        await repo.init()   # v2 -> v3
         await repo.close()
 
         repo2 = TelemetryRepository(path)
-        await repo2.init()  # v2 -> v2 (noop)
+        await repo2.init()  # v3 -> v3 (noop)
         await repo2.close()
     finally:
         os.unlink(path)
@@ -92,7 +152,15 @@ async def repo():
 
 async def test_schema_version(repo):
     cur = await repo.db.execute("PRAGMA user_version")
-    assert (await cur.fetchone())[0] == 2
+    assert (await cur.fetchone())[0] == 3
+
+
+async def test_fresh_install_is_v3(repo):
+    cur = await repo.db.execute("PRAGMA user_version")
+    assert (await cur.fetchone())[0] == 3
+    cur = await repo.db.execute("PRAGMA table_info(sessions)")
+    cols = {row[1] for row in await cur.fetchall()}
+    assert "notes" in cols
 
 
 async def test_wal_mode(tmp_path):
@@ -342,6 +410,55 @@ async def test_list_session_laps_excludes_lap0_and_incomplete():
         assert len(laps) == 1
         assert laps[0]["lap_number"] == 1
         assert laps[0]["lap_time_ms"] == 101887
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_update_session_notes_set_and_clear():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+
+        # Set notes
+        rowcount = await repo.update_session_notes(sid, "soft tires, TC 2")
+        assert rowcount == 1
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("SELECT notes FROM sessions WHERE id=?", (sid,))
+            assert (await cur.fetchone())[0] == "soft tires, TC 2"
+
+        # Clear notes
+        rowcount = await repo.update_session_notes(sid, None)
+        assert rowcount == 1
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute("SELECT notes FROM sessions WHERE id=?", (sid,))
+            assert (await cur.fetchone())[0] is None
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_update_session_notes_nonexistent_session():
+    repo, path = await _make_v2_repo()
+    try:
+        rowcount = await repo.update_session_notes(9999, "no such session")
+        assert rowcount == 0
+    finally:
+        await repo.close()
+        os.unlink(path)
+
+
+async def test_list_sessions_includes_notes():
+    repo, path = await _make_v2_repo()
+    try:
+        sid = await repo.insert_session(started_at=1000.0)
+        lid = await repo.insert_lap(1, sid, None, 1000.0)
+        await repo.complete_lap(lid, 101887, 1101.887, 1, car_code=3520)
+        await repo.update_session_notes(sid, "race setup A")
+
+        result = await repo.list_sessions()
+        assert len(result) == 1
+        assert result[0]["notes"] == "race setup A"
     finally:
         await repo.close()
         os.unlink(path)

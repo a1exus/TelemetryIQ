@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     started_at   REAL NOT NULL,
     track_id     INTEGER,
     car_code     INTEGER,
-    completed_at REAL
+    completed_at REAL,
+    notes        TEXT
 )
 """
 
@@ -122,15 +123,20 @@ class TelemetryRepository:
                 "CREATE INDEX IF NOT EXISTS idx_laps_complete_track "
                 "ON laps(is_complete, track_id, lap_time_ms)"
             )
-            await self.db.execute("PRAGMA user_version = 2")
+            await self.db.execute("PRAGMA user_version = 3")
             await self.db.commit()
         elif version == 1:
             await self.db.execute("ALTER TABLE sessions ADD COLUMN track_id INTEGER")
             await self.db.execute("ALTER TABLE sessions ADD COLUMN car_code INTEGER")
             await self.db.execute("ALTER TABLE sessions ADD COLUMN completed_at REAL")
-            await self.db.execute("PRAGMA user_version = 2")
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN notes TEXT")
+            await self.db.execute("PRAGMA user_version = 3")
             await self.db.commit()
         elif version == 2:
+            await self.db.execute("ALTER TABLE sessions ADD COLUMN notes TEXT")
+            await self.db.execute("PRAGMA user_version = 3")
+            await self.db.commit()
+        elif version == 3:
             pass
         else:
             raise RuntimeError(f"unsupported schema version: {version}")
@@ -190,11 +196,18 @@ class TelemetryRepository:
         )
         await self.db.commit()
 
+    async def update_session_notes(self, session_id: int, notes: str | None) -> int:
+        cur = await self.db.execute(
+            "UPDATE sessions SET notes=? WHERE id=?", (notes, session_id)
+        )
+        await self.db.commit()
+        return cur.rowcount
+
     async def list_sessions(self) -> list[dict]:
         """Return all sessions with at least one complete lap, newest first."""
         cur = await self.db.execute(
             """
-            SELECT s.id, s.started_at, s.completed_at, s.track_id, s.car_code,
+            SELECT s.id, s.started_at, s.completed_at, s.track_id, s.car_code, s.notes,
                    COUNT(l.id) AS lap_count,
                    MIN(l.lap_time_ms) AS best_lap_time_ms
             FROM sessions s
