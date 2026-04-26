@@ -166,6 +166,8 @@
     <section class="tab-panel" id="tab-powertrain" role="tabpanel" aria-labelledby="tabbtn-powertrain">
       <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
         <canvas id="ch-speed-pwr" height="80"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Engine RPM &#8212; x: distance (m)</p>
+        <canvas id="ch-rpm" height="60"></canvas></div>
       <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
         <canvas id="ch-gear" height="50"></canvas></div>
     </section>
@@ -569,6 +571,7 @@ loadSidebar();
 const CHART_DEFS = [
   { id: 'ch-speed',     fn: f => f.speed_mps * 3.6,        yLbl: 'km/h' },
   { id: 'ch-speed-pwr', fn: f => f.speed_mps * 3.6,        yLbl: 'km/h' },
+  { id: 'ch-rpm',       fn: f => f.engine_rpm,              yLbl: 'rpm'  },
   { id: 'ch-throttle',  fn: f => f.throttle / 255 * 100,   yLbl: '%'    },
   { id: 'ch-brake',     fn: f => f.brake    / 255 * 100,   yLbl: '%'    },
   { id: 'ch-gear',      fn: f => f.current_gear,            yLbl: ''     },
