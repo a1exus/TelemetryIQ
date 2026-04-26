@@ -311,6 +311,174 @@ Non-obvious design choices and why they were made.
 
 ---
 
+## Critical Implementation Patterns
+
+Non-obvious patterns the codebase depends on. Touch these only with care.
+
+### gt-telem callback threading
+
+gt-telem runs async callbacks via a fresh `asyncio.new_event_loop()` per
+call in a thread pool — **not** on the application's event loop. The app
+uses sync callbacks only and dispatches back to the captured app loop via
+`call_soon_threadsafe`:
+
+- `loop = asyncio.get_running_loop()` is captured at startup in `client.py`.
+- Frame data: `loop.call_soon_threadsafe(raw_queue.put_nowait, frame)`.
+- Lifecycle tasks: `loop.call_soon_threadsafe(lambda: asyncio.create_task(coro))`.
+- Sync state updates: `loop.call_soon_threadsafe(recorder.set_track_id, tid)`.
+
+`GameEvents` and `RaceEvents` declare their event lists (`on_at_track`,
+`on_lap_change`, etc.) as **class attributes**, so all instances share the
+same list. Create exactly one `GameEvents` and one `RaceEvents` per session
+to avoid duplicate callback registrations.
+
+`on_lap_change` passes only `new_lap_number: int` — `lap_time_ms` is NOT
+provided. `flush_and_new_lap` derives it from `buf[-1]["last_lap_time_ms"]`,
+which is reliable: `last_lap_time_ms` is present on every frame and remains
+the most recently completed lap throughout the next lap.
+
+### Buffer-before-await invariant
+
+Every `LapRecorder` method that reads `lap_buffer` and then awaits MUST
+capture the buffer contents and clear `self.lap_buffer = []` BEFORE the
+first `await`. Otherwise, frames received during the await for the new lap
+get appended to the old lap's buffer.
+
+```python
+# CORRECT
+buf = self.lap_buffer
+self.lap_buffer = []   # ← BEFORE any await
+await repo.insert_frames(old_id, buf)
+```
+
+`on_frame()` is synchronous and only appends between awaits, so clearing
+first is sufficient.
+
+### Race-restart path
+
+If `reset_and_new_lap()` is called while RECORDING (e.g. `on_at_track`
+during a race restart), it flushes the partial lap inline (writes frames,
+marks `is_complete=0`) before opening the new lap.
+
+### Lap-time `-1` sentinel
+
+GT7 telemetry uses `-1` for `last_lap_time_ms` and `best_lap_time_ms` when
+no valid lap time exists yet. Both are normalized to NULL on insert
+(`None if raw == -1 else raw`). The frontend renders missing values as
+`--:--.---`.
+
+### SQLite persistence
+
+`TelemetryRepository` holds a **persistent aiosqlite connection** opened
+in `init()` and closed in `close()`. `async with aiosqlite.connect(...)`
+would drop the connection after `init()` returns and break every
+subsequent query.
+
+`PRAGMA journal_mode=WAL` is set during `init()` so the FastAPI read path
+doesn't block the writer.
+
+`PRAGMA user_version` is **non-transactional**: set it AFTER the DDL
+`commit()` for fresh installs and migrations. Setting it before commit
+risks `version=N` persisting while DDL fails, causing silent skip on the
+next startup with missing tables.
+
+Indexes:
+
+- `idx_laps_is_complete` — filter complete laps.
+- `idx_laps_complete_track(is_complete, track_id, lap_time_ms)` —
+  "best laps on track" comparison query.
+
+### Queue sizing
+
+`raw_queue` is **unbounded**: the dispatcher does only in-memory work
+(no I/O, no `await` except `queue.get()`). Depth normally stays at 0–2.
+Growth above a few frames indicates a scheduler stall.
+
+`ws_queue` has `maxsize=1` with drop-oldest: at ~60 Hz, a slow WS client
+must not back-pressure the recording path.
+
+### Telemetry serialization
+
+`Telemetry.as_dict` (gt-telem) is a `@property` that returns nested
+`Vector3D` / `WheelMetric` objects and strips the flat per-axis /
+per-corner fields. It's unsuitable for JSON or SQLite. `client.py`
+provides a custom `telemetry_to_dict()` that:
+
+- Reads all flat dataclass attributes directly.
+- Decodes `current_gear = bits & 0b1111`, `suggested_gear = bits >> 4`.
+- Decodes flag booleans from `flags` (TCS active, ASM active, cars on
+  track, paused, in gear, rev limit, handbrake).
+- Excludes `iv` (encryption IV), `empty`, `unused1`–`unused8`,
+  `unk_tilde_*`, and `time` (the Python `datetime` added in
+  `__post_init__`).
+
+### `g_lateral` is not in the payload
+
+There is no G-force field in gt-telem. Lateral motion is `sway`
+(m/s², body acceleration) — heartbeat B only. The Channels table charts
+`sway` as the lateral-G channel; on heartbeat A there is no lateral-G
+display.
+
+### Shutdown sequence
+
+`__main__.py` cancels the dispatcher and broadcaster tasks, then awaits
+`recorder.close()` (which flushes any partial lap as `is_complete=0`) and
+`repo.close()`. After `asyncio.run()` returns, `sys.exit(0)` is required
+because gt-telem spawns non-daemon threads that block process exit (also
+recorded in Decisions).
+
+`recorder.close()` and any in-flight `flush_and_new_lap()` may interleave
+at await points but never double-write — the buffer-before-await pattern
+guarantees one of them sees an empty buffer. An orphan lap row
+(`is_complete=0`, no frames) is acceptable and filtered out by
+`is_complete=1` queries.
+
+### Auto-diff field rules
+
+The `/compare` auto-diff banner reads the **first frame** of each lap
+(these fields are constant per car setup). Compared fields:
+
+| Field | Display | Notes |
+| --- | --- | --- |
+| `gear1`–`gear8` | `"G3: 1.355 → 1.290"` | Skip pairs where both are 0 (unused gears); round to 3 decimals |
+| `trans_top_speed` | `"Top speed setting: 320 → 340"` | Rounded to integer |
+| `calc_max_speed` | `"Calc max speed: 280 → 295"` | Rounded to integer |
+
+The banner only shows when laps are from **different sessions** (same
+session = same setup) and at least one field differs.
+
+### Static lookup fallbacks
+
+If `cars.json` lacks a `car_code`, the UI displays `"Car {code}"`. If
+`tracks.json` lacks a `track_id`, it displays `"Track {id}"`. Both files
+may be committed as `{}` initially without blocking implementation; see
+`AGENTS.md` for refresh instructions.
+
+### HUD field exclusions
+
+The live HUD intentionally hides:
+
+- `clutch_pedal` and `clutch_engagement` — most GT7 racing uses automatic
+  transmission; these aren't actionable.
+- `suggested_gear` when the value is `≥ 15` or falsy — GT7's "no
+  suggestion" sentinel; render `--` instead.
+
+### Error handling outcomes
+
+| Scenario | Outcome |
+| --- | --- |
+| Mid-lap process crash | Buffer lost; lap row stays `is_complete=0`. |
+| Clean shutdown (SIGTERM / Ctrl-C) | Tasks cancelled; partial lap flushed with `is_complete=0`. |
+| Race restart while recording | `reset_and_new_lap()` flushes partial inline (buffer-before-await). |
+| SQLite write failure | Error logged; buffer already cleared; lap row stays `is_complete=0`; no retry. |
+| WebSocket client disconnect | Removed from `clients` set in `/ws` handler `finally`. |
+| Slow WebSocket client | `asyncio.gather` isolates per-client sends. |
+| `on_lap_change` before recording started | `flush_and_new_lap` is a no-op in the IDLE state. |
+| `on_track_detected` after first lap starts | `current_track_id` is None for that lap; subsequent laps populated correctly. |
+| Lap counter jumps after laptop sleep | Lap numbers may skip; data for skipped laps is lost (see Known Issues). |
+
+---
+
 ## Known Issues
 
 | Issue | Impact | Notes |
