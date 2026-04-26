@@ -132,16 +132,16 @@
     <p id="placeholder">Expand a session to overlay its laps.</p>
 
     <nav id="tabnav" role="tablist">
-      <button class="tab-btn active" data-tab="line"      role="tab">Driving Line</button>
-      <button class="tab-btn"        data-tab="inputs"    role="tab">Inputs</button>
-      <button class="tab-btn"        data-tab="powertrain" role="tab">Powertrain</button>
+      <button class="tab-btn active" data-tab="line"      id="tabbtn-line"       role="tab" aria-selected="true"  aria-controls="tab-line">Driving Line</button>
+      <button class="tab-btn"        data-tab="inputs"    id="tabbtn-inputs"     role="tab" aria-selected="false" aria-controls="tab-inputs">Inputs</button>
+      <button class="tab-btn"        data-tab="powertrain" id="tabbtn-powertrain" role="tab" aria-selected="false" aria-controls="tab-powertrain">Powertrain</button>
     </nav>
 
     <div id="legend"></div>
     <div id="compare-hdr"></div>
     <div id="setup-diff"></div>
 
-    <section class="tab-panel active" id="tab-line" role="tabpanel">
+    <section class="tab-panel active" id="tab-line" role="tabpanel" aria-labelledby="tabbtn-line">
       <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
         <canvas id="ch-speed" height="80"></canvas></div>
       <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
@@ -162,8 +162,8 @@
       </div>
     </section>
 
-    <section class="tab-panel" id="tab-inputs" role="tabpanel"></section>
-    <section class="tab-panel" id="tab-powertrain" role="tabpanel"></section>
+    <section class="tab-panel" id="tab-inputs" role="tabpanel" aria-labelledby="tabbtn-inputs"></section>
+    <section class="tab-panel" id="tab-powertrain" role="tabpanel" aria-labelledby="tabbtn-powertrain"></section>
   </main>
 </div>
 
@@ -173,6 +173,7 @@
 <script>
 'use strict';
 
+// ── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_IDS = ['line', 'inputs', 'powertrain'];
 
 function readTabFromHash() {
@@ -184,7 +185,9 @@ function readTabFromHash() {
 function activateTab(tabId) {
   if (!TAB_IDS.includes(tabId)) tabId = 'line';
   document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.tab === tabId);
+    const isActive = b.dataset.tab === tabId;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', String(isActive));
   });
   document.querySelectorAll('.tab-panel').forEach(p => {
     p.classList.toggle('active', p.id === 'tab-' + tabId);
