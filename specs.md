@@ -8,7 +8,7 @@ full telemetry per lap to SQLite and enables lap-over-lap comparison — modelle
 on professional motorsport tools (MoTeC i2, AiM Race Studio) and the official
 [GT7 Data Logger](https://www.gran-turismo.com/us/news/00_5736734.html).
 
-**Last updated:** 2026-04-07
+**Last updated:** 2026-04-26
 
 ### Core Use Cases
 
@@ -49,6 +49,26 @@ the north star for TelemetryIQ.
 
 **Status:** Complete. Session notes let the user record what they changed.
 Gear ratio, top speed, and max speed changes auto-detected between sessions.
+
+### Positioning vs. the In-Game Data Logger
+
+GT7's Spec III Data Logger inspired TelemetryIQ and shares its two analysis
+workflows. TelemetryIQ is not a replacement — it is what you reach for when
+the in-game tool runs out of room.
+
+| Capability | GT7 Data Logger | TelemetryIQ |
+| --- | --- | --- |
+| Lap overlay | Two laps | N laps |
+| Where viewable | TV / console only | Any LAN device (phone, tablet, laptop) |
+| Persistent history | Tied to game session | SQLite across all sessions, indefinitely |
+| Setup change tracking | Implicit via stored setups | Free-text notes + auto-detected gear ratio / top speed diffs |
+| Live HUD while driving | On-screen | LAN-accessible WebSocket HUD on any device |
+| Cross-session filtering | N/A | Track/car filters in the session browser |
+| Data export | None documented | SQLite, plus planned export (Phase 6) |
+
+What GT7 has that TelemetryIQ does not: replay download from online rankings.
+This is the one workflow where the in-game tool wins outright — TelemetryIQ
+has no access to other players' telemetry.
 
 ---
 
@@ -310,6 +330,86 @@ Non-obvious design choices and why they were made.
 | 4 | Sessions with car/track identity; session browser UI | Done |
 | 5 | Setup comparison: auto-diff, session notes, filtering | Done |
 | 6 | Lap data export | Planned |
+| 7 | GT7-aligned compare view: 3 tabs (Driving Line / Inputs / Powertrain) | Planned |
+
+---
+
+## Phase 7 Design — GT7-Aligned Compare View
+
+### Goal
+
+Restructure `/compare` to mirror the three-view organization of GT7's Spec III
+in-game Data Logger. Adopt the shape of GT7's analysis flow while keeping
+TelemetryIQ-specific extras (N-lap overlay, steering/gear traces, session
+notes, cross-session filtering).
+
+### Three Tabs
+
+`/compare` becomes three tabs. The selected tab is persisted in the URL hash
+(`#tab=line | inputs | powertrain`) so links are shareable. Default on load:
+`line`.
+
+**Tab 1 — Driving Line** *(GT7 View 1: speed/gap + driving line)*
+
+| Element | Notes |
+| --- | --- |
+| Track map | Color-coded by speed; existing implementation |
+| Speed trace | Distance-based x-axis |
+| Time delta trace | N-lap mode: one line per non-baseline lap, computed against the baseline. Existing behavior, preserved |
+
+Layout:
+
+- Desktop (≥1024px): track map on the left, speed + delta stacked on the right.
+- Narrow (<1024px): track map, speed, delta stacked vertically.
+
+**Tab 2 — Inputs** *(GT7 View 2: throttle/brake + lateral G)*
+
+| Element | Notes |
+| --- | --- |
+| Throttle trace | |
+| Brake trace | |
+| Lateral G trace | |
+| Steering trace | Heartbeat B only; hidden when unavailable |
+
+Layout: stacked traces, full width.
+
+**Tab 3 — Powertrain** *(GT7 View 3: speed + RPM)*
+
+| Element | Notes |
+| --- | --- |
+| Speed trace | Same channel as Tab 1; included here as the universal reference, mirroring GT7 |
+| RPM trace | |
+| Gear trace | Stepped trace; same width as RPM, half the height |
+
+Layout: stacked traces, full width.
+
+### Components Outside Tabs
+
+Session browser, lap pickers, auto-diff banner, session notes, track/car
+filters, and the synchronized crosshair stay outside the tab area and apply
+to whichever tab is active. Switching tabs does not reset lap selection or
+crosshair position.
+
+### Naming
+
+Tab names are descriptive ("Driving Line", "Inputs", "Powertrain") rather
+than GT7's literal "View 1/2/3". The descriptive form is self-explanatory
+and matches the way GT7's own announcement article describes each view.
+
+### Out of Scope (Phase 7)
+
+- Replay download from online rankings — GT7 closed system; no public API.
+- Stored setup snapshots tied to laps — no telemetry source for car settings;
+  free-text session notes remain the workaround.
+- Mobile portrait optimization beyond vertical stacking.
+- Tab keyboard shortcuts.
+
+### Follow-up — Phase 7b
+
+After Phase 7 lands, soften the "Positioning vs. the In-Game Data Logger"
+subsection above. Reframe it as "Relationship to the GT7 Data Logger",
+emphasizing TelemetryIQ as a faithful extension rather than an alternative.
+The current differentiation table becomes an "extends" table.
 
 ---
 
