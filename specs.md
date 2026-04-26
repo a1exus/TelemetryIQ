@@ -330,7 +330,7 @@ Non-obvious design choices and why they were made.
 | 4 | Sessions with car/track identity; session browser UI | Done |
 | 5 | Setup comparison: auto-diff, session notes, filtering | Done |
 | 6 | Lap data export | Planned |
-| 7 | GT7-aligned compare view: 3 tabs (Driving Line / Inputs / Powertrain) | Planned |
+| 7 | GT7-aligned compare view: 3 tabs (Driving Line / Inputs / Powertrain) | Done |
 
 ---
 
