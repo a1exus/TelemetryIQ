@@ -10,7 +10,7 @@ lap analysis tool. It captures UDP telemetry from PlayStation via
 over WebSocket, and enables lap-over-lap comparison.
 
 - **Primary Technologies:** Python 3.10+, `gt-telem`, FastAPI, SQLite (`aiosqlite`).
-- **Status:** Phases 1–5 complete. Phase 6 (lap data export) planned.
+- **Status:** Phases 1–5 and 7 complete. Phase 6 (lap data export) planned.
 - **Specs:** `specs.md` is the authoritative source for requirements.
   Phase designs and plans are in `docs/superpowers/`.
 
@@ -56,9 +56,11 @@ PlayStation (GT7, ~60Hz UDP)
   `PATCH /sessions/{id}`); serves static files.
 - `rexy/static/index.html`: Live HUD — speed, RPM, gear, pedals,
   tires, lap timer.
-- `rexy/static/compare.html`: N-lap overlay analysis — session browser,
-  auto-diff, session notes, track/car filters, trace charts, delta,
-  track map.
+- `rexy/static/compare.html`: N-lap overlay analysis organised into
+  three tabs (Driving Line / Inputs / Powertrain) aligned with GT7's
+  in-game Data Logger; selected tab persisted in URL hash. Includes
+  session browser, auto-diff, session notes, track/car filters, trace
+  charts, delta, track map.
 - `rexy/static/cars.json`, `tracks.json`: Car/track name lookups (559 cars, 106 tracks from gran-turismo.com).
 - `specs.md`: Authoritative source for requirements, architecture, and telemetry fields.
 - `plan.md`: High-level roadmap and phase definitions.

@@ -2,7 +2,7 @@
 
 ## Summary
 
-High-level implementation plan for TelemetryIQ. All five phases are complete. Phase 6 (lap data export) is planned.
+High-level implementation plan for TelemetryIQ. Phases 1–5 and Phase 7 are complete. Phase 6 (lap data export) is planned.
 
 ## Phases
 
@@ -40,6 +40,15 @@ High-level implementation plan for TelemetryIQ. All five phases are complete. Ph
 
 - Export lap data for external analysis tools.
 
+### Phase 7: GT7-Aligned Compare View ✅
+
+- Restructured `/compare` into three tabs (Driving Line / Inputs / Powertrain) mirroring GT7 Spec III's in-game Data Logger.
+- New engine RPM trace in Powertrain tab.
+- Tab selection persisted in URL hash (`#tab=line|inputs|powertrain`).
+- Tab 1 desktop layout (≥1024px): track map left, speed/delta stacked right.
+- Crosshair listener leak fixed (sentinel-flag attach; active-tab self-check).
+- WAI-ARIA tab pattern wired (`role`, `aria-selected`, `aria-controls`, `aria-labelledby`).
+
 ## Tech stack
 
 - **Python**: 3.10+
@@ -60,3 +69,4 @@ High-level implementation plan for TelemetryIQ. All five phases are complete. Ph
 | 2025-03-15 | Aligned with gt-telem; added tech stack and PS discovery error mitigation |
 | 2026-03-16 | Rethought phases: recording first, analysis second, setup comparison fourth |
 | 2026-04-07 | Updated all phases to reflect completion; added Phases 4–6 |
+| 2026-04-26 | Added Phase 7 (GT7-aligned compare view) |

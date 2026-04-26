@@ -43,7 +43,21 @@ Glanceable driving display, updated at ~60 Hz. Designed to be readable in a
 
 ### `/compare` — Lap Analysis
 
-N-lap overlay analysis modelled on MoTeC i2 / AiM Race Studio:
+N-lap overlay analysis modelled on MoTeC i2 / AiM Race Studio and aligned
+with GT7 Spec III's in-game [Data Logger](https://www.gran-turismo.com/gb/news/00_5736734.html).
+
+The view is split into **three tabs** (selected tab is persisted in the URL
+hash, e.g. `/compare#tab=inputs`):
+
+| Tab | Channels |
+| --- | --- |
+| **Driving Line** | Track map (speed-coloured paths), speed trace, time delta vs reference lap. On screens ≥1024px, the map sits left of the stacked speed/delta traces. |
+| **Inputs** | Throttle (%), brake (%), lateral accel (m/s², heartbeat B), steering (rad, heartbeat B) |
+| **Powertrain** | Speed (km/h), engine RPM, gear |
+
+The session browser, lap pickers, auto-diff banner, session notes,
+track/car filters, baseline (REF) selection and synchronized crosshair
+apply across all three tabs.
 
 | Element | Description |
 | --- | --- |
@@ -52,10 +66,8 @@ N-lap overlay analysis modelled on MoTeC i2 / AiM Race Studio:
 | Baseline/reference | Best lap auto-set as reference (thicker dashed line, `[REF]` tag). Right-click any lap to change reference. Delta chart computed against it. |
 | Session notes | Free-text note per session (e.g. "front DF +5"). Inline edit in sidebar. Shown in comparison header when overlaying laps from different sessions. |
 | Auto-diff banner | Automatically detects gear ratio, top speed, and max speed changes between sessions — no user input needed. |
-| Trace channels | Speed (km/h), throttle (%), brake (%), gear, lateral accel (m/s²), steering (rad) — all distance-aligned x-axis with labelled axes |
-| Time delta | Gap graph: cumulative time difference vs reference lap at every metre of track |
-| Track map | `position_x` vs `position_z` with lap-coloured paths |
-| Crosshair sync | Hover any chart — all charts highlight the same distance point |
+| Time delta | N-lap gap graph: one trace per non-baseline lap, cumulative time difference vs the reference lap at every metre of track. |
+| Crosshair sync | Hover any chart — all charts in the active tab highlight the same distance point. |
 
 Laps are recorded automatically to `telemetry.db` (SQLite) on every `on_lap_change` event.
 
@@ -128,6 +140,6 @@ PlayStation (GT7, ~60 Hz UDP)
 | Repository | `rexy/repository.py` | All SQLite reads and writes; schema migrations via `user_version` |
 | FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `PATCH /sessions/{id}`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |
 | Live HUD | `rexy/static/index.html` | Vanilla JS; glanceable driving display |
-| Lap analysis | `rexy/static/compare.html` | N-lap overlay with session browser, auto-diff banner, session notes, track/car filters, baseline reference, trace charts, delta, track map |
+| Lap analysis | `rexy/static/compare.html` | Three tabs (Driving Line / Inputs / Powertrain) aligned with GT7's Data Logger; N-lap overlay; session browser; auto-diff banner; session notes; track/car filters; baseline reference; distance-based traces; N-lap delta graph; track map; tab persisted in URL hash |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups (559 cars, 106 tracks from gran-turismo.com) |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles clean shutdown |
