@@ -2,7 +2,7 @@
 
 ## Summary
 
-High-level implementation plan for TelemetryIQ. Phases 1–5 and Phase 7 are complete. Phase 6 (lap data export) is planned.
+High-level implementation plan for TelemetryIQ. All phases (1–7) are complete.
 
 ## Phases
 
@@ -36,9 +36,11 @@ High-level implementation plan for TelemetryIQ. Phases 1–5 and Phase 7 are com
 - Track/car filtering in session browser.
 - `PATCH /sessions/{id}` endpoint for notes.
 
-### Phase 6: Lap Data Export (planned)
+### Phase 6: Lap Data Export ✅
 
-- Export lap data for external analysis tools.
+- `GET /laps/{car_code}/{lap_number}/{lap_id}/export.csv` returns a lap's frames as CSV with `Content-Disposition: attachment`.
+- `csv` link on each lap row in `/compare`.
+- Narrow scope by design: SQLite is already the de-facto export, and most analysis use cases are covered in-app by Phase 7. MoTeC LD or multi-lap export deferred until a real user request.
 
 ### Phase 7: GT7-Aligned Compare View ✅
 
@@ -70,3 +72,4 @@ High-level implementation plan for TelemetryIQ. Phases 1–5 and Phase 7 are com
 | 2026-03-16 | Rethought phases: recording first, analysis second, setup comparison fourth |
 | 2026-04-07 | Updated all phases to reflect completion; added Phases 4–6 |
 | 2026-04-26 | Added Phase 7 (GT7-aligned compare view) |
+| 2026-04-26 | Phase 6 (per-lap CSV export, narrow scope) shipped |

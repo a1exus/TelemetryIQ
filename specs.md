@@ -234,6 +234,7 @@ PlayStation (GT7, ~60 Hz UDP)
 | `GET` | `/sessions/{id}/laps` | `[{id, lap_number, lap_time_ms}]` — complete laps, `lap_number > 0` |
 | `GET` | `/laps` | `[{id, lap_number, lap_time_ms, car_code, started_at}]` |
 | `GET` | `/laps/{car_code}/{lap_number}/{lap_id}/frames` | `[{seq, ...all fields..., distance_m}]` |
+| `GET` | `/laps/{car_code}/{lap_number}/{lap_id}/export.csv` | CSV — one row per frame, header row included, columns match the JSON `frames` response (incl. `distance_m`). `Content-Disposition: attachment` with filename `lap-{car}-{n}-{id}.csv`. Empty body if the lap has no frames. |
 | `PATCH` | `/sessions/{id}` | Update session notes. Body: `{"notes": "..."}`. Returns `{"ok": true}` or 404/422. |
 
 ### Rendering Stack
@@ -497,7 +498,7 @@ The live HUD intentionally hides:
 | 3 | Analysis dashboard: trace charts, delta, track map | Done |
 | 4 | Sessions with car/track identity; session browser UI | Done |
 | 5 | Setup comparison: auto-diff, session notes, filtering | Done |
-| 6 | Lap data export | Planned |
+| 6 | Lap data export (CSV per lap, narrow scope) | Done |
 | 7 | GT7-aligned compare view: 3 tabs (Driving Line / Inputs / Powertrain) | Done |
 
 ---

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 if TYPE_CHECKING:
@@ -118,6 +120,25 @@ async def get_frames(car_code: int, lap_number: int, lap_id: int):
         raise HTTPException(status_code=503, detail="repository not ready")
     frames = await _repo.get_frames(lap_id)
     return _add_distance(frames)
+
+
+@app.get("/laps/{car_code}/{lap_number}/{lap_id}/export.csv")
+async def export_lap_csv(car_code: int, lap_number: int, lap_id: int) -> Response:
+    from fastapi import HTTPException
+    if _repo is None:
+        raise HTTPException(status_code=503, detail="repository not ready")
+    frames = _add_distance(await _repo.get_frames(lap_id))
+    body = io.StringIO()
+    if frames:
+        writer = csv.DictWriter(body, fieldnames=list(frames[0].keys()))
+        writer.writeheader()
+        writer.writerows(frames)
+    filename = f"lap-{car_code}-{lap_number}-{lap_id}.csv"
+    return Response(
+        content=body.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/compare")

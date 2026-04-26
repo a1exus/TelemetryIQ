@@ -6,6 +6,24 @@ Versioning uses [CalVer](https://calver.org/) (`YYYY.MM.DD`).
 
 ---
 
+## 2026.04.26 — Phase 6: Per-Lap CSV Export
+
+### Added
+
+- **CSV export per lap**: new endpoint
+  `GET /laps/{car_code}/{lap_number}/{lap_id}/export.csv` returns the
+  lap's frames as CSV (header + one row per frame; columns match the
+  JSON `/frames` response including `distance_m`).
+  `Content-Disposition: attachment` with a `lap-{car}-{n}-{id}.csv`
+  filename so the browser saves with a sane name.
+- **`csv` link on each lap row** in the `/compare` sidebar.
+
+Phase 6 was deliberately narrowed (single endpoint, no MoTeC LD or
+multi-lap export) since SQLite is already the de-facto export and most
+analysis use cases are now covered in-app by Phase 7.
+
+---
+
 ## 2026.04.26 — Phase 7: GT7-Aligned Compare View
 
 ### Changed

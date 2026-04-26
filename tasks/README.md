@@ -6,10 +6,8 @@ Task files are named by phase and order: `NN-brief-title.md`.
 - **02-*** — Phase 2: Recording (SQLite per lap, minimal live view) ✅
 - **03-*** — Phase 3: Analysis dashboard (lap comparison, gap graph, driving line) ✅
 
-Phases 4 (Sessions), 5 (Setup Comparison), and 7 (GT7-aligned compare view)
-were implemented without task files in this directory; their plans live in
-`docs/superpowers/plans/`.
-
-Phase 6 (lap data export) is planned.
+Phases 4 (Sessions), 5 (Setup Comparison), 6 (per-lap CSV export), and 7
+(GT7-aligned compare view) were implemented without task files in this
+directory; the larger ones have plans in `docs/superpowers/plans/`.
 
 Each task file should include: objective, acceptance criteria, notes, and status.

@@ -14,7 +14,7 @@ per lap to SQLite and enables lap-over-lap comparison.
 **Phase 3** (complete): Analysis dashboard — N-lap overlay, gap graph, track map.
 **Phase 4** (complete): Sessions as first-class entities, car/track identity.
 **Phase 5** (complete): Setup comparison — auto-diff, session notes, filtering.
-**Phase 6** (planned): Lap data export.
+**Phase 6** (complete): Lap data export — CSV per lap.
 **Phase 7** (complete): GT7-aligned compare view — three tabs (Driving Line / Inputs / Powertrain), engine RPM trace, hash-persisted tab.
 
 ## Commands

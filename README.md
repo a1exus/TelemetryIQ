@@ -68,6 +68,7 @@ apply across all three tabs.
 | Auto-diff banner | Automatically detects gear ratio, top speed, and max speed changes between sessions — no user input needed. |
 | Time delta | N-lap gap graph: one trace per non-baseline lap, cumulative time difference vs the reference lap at every metre of track. |
 | Crosshair sync | Hover any chart — all charts in the active tab highlight the same distance point. |
+| CSV export | Click `csv` next to any lap in the sidebar to download that lap's frames as CSV (one row per frame; same columns as the JSON `frames` API). |
 
 Laps are recorded automatically to `telemetry.db` (SQLite) on every `on_lap_change` event.
 

@@ -42,6 +42,10 @@
   .lap-time-col  { width: 5.5rem; font-weight: bold; }
   .lap-delta-col { color: #888; font-size: 0.65rem; }
   .lap-star      { color: #fa4; }
+  .lap-export    { margin-left: auto; color: #555; font-size: 0.6rem;
+                   text-decoration: none; padding: 0 0.3rem;
+                   letter-spacing: 0.05em; text-transform: uppercase; }
+  .lap-export:hover { color: #4af; }
   #sidebar-msg  { color: #555; font-size: 0.8rem; padding: 0.5rem; }
 
   /* session notes in sidebar */
@@ -428,10 +432,19 @@ async function populateLaps(lapsDiv, session) {
     deltaEl.className = 'lap-delta-col' + (isBest ? ' lap-star' : '');
     deltaEl.textContent = fmtDelta(lap.lap_time_ms - best);
 
+    const exportEl = document.createElement('a');
+    exportEl.className = 'lap-export';
+    exportEl.href = '/laps/' + session.car_code + '/' + lap.lap_number + '/' + lap.id + '/export.csv';
+    exportEl.setAttribute('download', '');
+    exportEl.title = 'Download lap as CSV';
+    exportEl.textContent = 'csv';
+    exportEl.addEventListener('click', e => e.stopPropagation());
+
     row.appendChild(dot);
     row.appendChild(numEl);
     row.appendChild(timeEl);
     row.appendChild(deltaEl);
+    row.appendChild(exportEl);
 
     row.addEventListener('click', () => toggleLap(lapWithCar));
     row.addEventListener('contextmenu', (e) => {

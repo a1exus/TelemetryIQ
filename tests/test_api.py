@@ -81,6 +81,37 @@ def test_get_frames_unknown_lap_returns_empty():
     assert r.json() == []
 
 
+def test_export_csv_headers_and_filename():
+    r = TestClient(app).get("/laps/42/1/1/export.csv")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert r.headers["content-disposition"] == 'attachment; filename="lap-42-1-1.csv"'
+
+
+def test_export_csv_body_has_header_and_rows():
+    r = TestClient(app).get("/laps/42/1/1/export.csv")
+    lines = r.text.splitlines()
+    # 1 header + 3 data rows
+    assert len(lines) == 4
+    header = lines[0].split(",")
+    assert "seq" in header
+    assert "ts" in header
+    assert "speed_mps" in header
+    assert "distance_m" in header  # appended by _add_distance
+
+
+def test_export_csv_unknown_lap_returns_empty():
+    r = TestClient(app).get("/laps/42/1/999/export.csv")
+    assert r.status_code == 200
+    assert r.text == ""
+
+
+def test_export_csv_503_before_repo_set():
+    set_repo(None)
+    r = TestClient(app).get("/laps/42/1/1/export.csv")
+    assert r.status_code == 503
+
+
 def test_compare_page_served():
     r = TestClient(app).get("/compare")
     assert r.status_code == 200
