@@ -220,6 +220,9 @@ function activateTab(tabId) {
   if (window.location.hash !== newHash) {
     history.replaceState(null, '', newHash);
   }
+  // Force visible charts to recompute their canvas size, then rebind crosshair
+  Object.values(charts).forEach(ch => { try { ch.resize(); } catch (e) {} });
+  setTimeout(attachCrosshair, 0);
 }
 
 function initTabs() {
@@ -750,14 +753,21 @@ function drawTrackMap() {
 
 // ── Synchronized crosshair ───────────────────────────────────────────────────
 function attachCrosshair() {
-  const all = Object.values(charts);
-  all.forEach(source => {
-    source.canvas.addEventListener('mousemove', e => {
-      const rect = source.canvas.getBoundingClientRect();
-      const xVal = source.scales.x?.getValueForPixel(e.clientX - rect.left);
+  Object.values(charts).forEach(ch => {
+    const canvas = ch.canvas;
+    if (canvas._crosshairAttached) return;
+    canvas._crosshairAttached = true;
+    canvas.addEventListener('mousemove', e => {
+      const activePanel = document.querySelector('.tab-panel.active');
+      if (!activePanel || !activePanel.contains(canvas)) return;
+      const sourceChart = Object.values(charts).find(c => c.canvas === canvas);
+      if (!sourceChart || !sourceChart.scales.x) return;
+      const rect = canvas.getBoundingClientRect();
+      const xVal = sourceChart.scales.x.getValueForPixel(e.clientX - rect.left);
       if (xVal == null) return;
-      all.forEach(target => {
-        if (target === source || !target.scales.x) return;
+      Object.values(charts).forEach(target => {
+        if (target === sourceChart || !target.scales.x) return;
+        if (!activePanel.contains(target.canvas)) return;
         const px = target.scales.x.getPixelForValue(xVal);
         target.canvas.dispatchEvent(new MouseEvent('mousemove', {
           clientX: target.canvas.getBoundingClientRect().left + px,
