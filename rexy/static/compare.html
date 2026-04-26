@@ -144,16 +144,6 @@
     <section class="tab-panel active" id="tab-line" role="tabpanel" aria-labelledby="tabbtn-line">
       <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
         <canvas id="ch-speed" height="80"></canvas></div>
-      <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
-        <canvas id="ch-throttle" height="60"></canvas></div>
-      <div class="chart-wrap"><p class="chart-lbl">Brake (%) &#8212; x: distance (m)</p>
-        <canvas id="ch-brake" height="60"></canvas></div>
-      <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
-        <canvas id="ch-gear" height="50"></canvas></div>
-      <div class="chart-wrap"><p class="chart-lbl">Lateral accel &#8212; sway, m/s&#178; (Heartbeat B only)</p>
-        <canvas id="ch-sway" height="50"></canvas></div>
-      <div class="chart-wrap"><p class="chart-lbl">Steering (rad, Heartbeat B only)</p>
-        <canvas id="ch-steer" height="50"></canvas></div>
       <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; vs best selected (s)</p>
         <canvas id="ch-delta" height="60"></canvas></div>
       <div id="map-wrap">
@@ -162,8 +152,22 @@
       </div>
     </section>
 
-    <section class="tab-panel" id="tab-inputs" role="tabpanel" aria-labelledby="tabbtn-inputs"></section>
-    <section class="tab-panel" id="tab-powertrain" role="tabpanel" aria-labelledby="tabbtn-powertrain"></section>
+    <section class="tab-panel" id="tab-inputs" role="tabpanel" aria-labelledby="tabbtn-inputs">
+      <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
+        <canvas id="ch-throttle" height="60"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Brake (%) &#8212; x: distance (m)</p>
+        <canvas id="ch-brake" height="60"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Lateral accel &#8212; sway, m/s&#178; (Heartbeat B only)</p>
+        <canvas id="ch-sway" height="50"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Steering (rad, Heartbeat B only)</p>
+        <canvas id="ch-steer" height="50"></canvas></div>
+    </section>
+    <section class="tab-panel" id="tab-powertrain" role="tabpanel" aria-labelledby="tabbtn-powertrain">
+      <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
+        <canvas id="ch-speed-pwr" height="80"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
+        <canvas id="ch-gear" height="50"></canvas></div>
+    </section>
   </main>
 </div>
 
@@ -562,12 +566,13 @@ loadSidebar();
 
 // ── Chart helpers ────────────────────────────────────────────────────────────
 const CHART_DEFS = [
-  { id: 'ch-speed',    fn: f => f.speed_mps * 3.6,           yLbl: 'km/h' },
-  { id: 'ch-throttle', fn: f => f.throttle / 255 * 100,      yLbl: '%'    },
-  { id: 'ch-brake',    fn: f => f.brake    / 255 * 100,      yLbl: '%'    },
-  { id: 'ch-gear',     fn: f => f.current_gear,               yLbl: ''     },
-  { id: 'ch-sway',     fn: f => f.sway,                       yLbl: 'm/s\u00b2' },
-  { id: 'ch-steer',    fn: f => f.wheel_rotation_radians,     yLbl: 'rad'  },
+  { id: 'ch-speed',     fn: f => f.speed_mps * 3.6,        yLbl: 'km/h' },
+  { id: 'ch-speed-pwr', fn: f => f.speed_mps * 3.6,        yLbl: 'km/h' },
+  { id: 'ch-throttle',  fn: f => f.throttle / 255 * 100,   yLbl: '%'    },
+  { id: 'ch-brake',     fn: f => f.brake    / 255 * 100,   yLbl: '%'    },
+  { id: 'ch-gear',      fn: f => f.current_gear,            yLbl: ''     },
+  { id: 'ch-sway',      fn: f => f.sway,                    yLbl: 'm/s\u00b2' },
+  { id: 'ch-steer',     fn: f => f.wheel_rotation_radians,  yLbl: 'rad'  },
 ];
 
 const BASE_OPTS = (yLbl) => ({
