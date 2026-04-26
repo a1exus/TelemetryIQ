@@ -103,6 +103,19 @@
   #map-canvas { display: block; background: #0a0a0a; border-radius: 3px;
                 width: 100%; height: auto; }
 
+  /* tabs */
+  #tabnav { display: none; gap: 0.25rem; flex-shrink: 0; padding: 0; margin: 0;
+            border-bottom: 1px solid #222; }
+  #tabnav.visible { display: flex; }
+  .tab-btn { background: transparent; color: #777; border: 0;
+             border-bottom: 2px solid transparent;
+             padding: 0.5rem 1rem; font-family: inherit; font-size: 0.75rem;
+             letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+  .tab-btn:hover { color: #ccc; }
+  .tab-btn.active { color: #4af; border-bottom-color: #4af; }
+  .tab-panel { display: none; flex-direction: column; gap: 0.75rem; flex: 1; min-width: 0; }
+  .tab-panel.active { display: flex; }
+
   #placeholder { color: #444; font-size: 0.9rem; padding: 2rem; text-align: center; }
 </style>
 </head>
@@ -118,29 +131,39 @@
   <main id="content">
     <p id="placeholder">Expand a session to overlay its laps.</p>
 
+    <nav id="tabnav" role="tablist">
+      <button class="tab-btn active" data-tab="line"      role="tab">Driving Line</button>
+      <button class="tab-btn"        data-tab="inputs"    role="tab">Inputs</button>
+      <button class="tab-btn"        data-tab="powertrain" role="tab">Powertrain</button>
+    </nav>
+
     <div id="legend"></div>
     <div id="compare-hdr"></div>
     <div id="setup-diff"></div>
 
-    <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
-      <canvas id="ch-speed" height="80"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
-      <canvas id="ch-throttle" height="60"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Brake (%) &#8212; x: distance (m)</p>
-      <canvas id="ch-brake" height="60"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
-      <canvas id="ch-gear" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Lateral accel &#8212; sway, m/s&#178; (Heartbeat B only)</p>
-      <canvas id="ch-sway" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Steering (rad, Heartbeat B only)</p>
-      <canvas id="ch-steer" height="50"></canvas></div>
-    <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; vs best selected (s)</p>
-      <canvas id="ch-delta" height="60"></canvas></div>
+    <section class="tab-panel active" id="tab-line" role="tabpanel">
+      <div class="chart-wrap"><p class="chart-lbl">Speed (km/h) &#8212; x: distance (m)</p>
+        <canvas id="ch-speed" height="80"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Throttle (%) &#8212; x: distance (m)</p>
+        <canvas id="ch-throttle" height="60"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Brake (%) &#8212; x: distance (m)</p>
+        <canvas id="ch-brake" height="60"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Gear &#8212; x: distance (m)</p>
+        <canvas id="ch-gear" height="50"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Lateral accel &#8212; sway, m/s&#178; (Heartbeat B only)</p>
+        <canvas id="ch-sway" height="50"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Steering (rad, Heartbeat B only)</p>
+        <canvas id="ch-steer" height="50"></canvas></div>
+      <div class="chart-wrap"><p class="chart-lbl">Time Delta &#8212; vs best selected (s)</p>
+        <canvas id="ch-delta" height="60"></canvas></div>
+      <div id="map-wrap">
+        <p class="chart-lbl">Track Map &#8212; speed colormap (blue=slow &#8594; red=fast)</p>
+        <canvas id="map-canvas" width="800" height="500"></canvas>
+      </div>
+    </section>
 
-    <div id="map-wrap">
-      <p class="chart-lbl">Track Map &#8212; speed colormap (blue=slow &#8594; red=fast)</p>
-      <canvas id="map-canvas" width="800" height="500"></canvas>
-    </div>
+    <section class="tab-panel" id="tab-inputs" role="tabpanel"></section>
+    <section class="tab-panel" id="tab-powertrain" role="tabpanel"></section>
   </main>
 </div>
 
@@ -149,6 +172,38 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
 'use strict';
+
+const TAB_IDS = ['line', 'inputs', 'powertrain'];
+
+function readTabFromHash() {
+  const m = window.location.hash.match(/tab=([a-z]+)/);
+  const t = m && m[1];
+  return TAB_IDS.includes(t) ? t : 'line';
+}
+
+function activateTab(tabId) {
+  if (!TAB_IDS.includes(tabId)) tabId = 'line';
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + tabId);
+  });
+  const newHash = '#tab=' + tabId;
+  if (window.location.hash !== newHash) {
+    history.replaceState(null, '', newHash);
+  }
+}
+
+function initTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+  });
+  window.addEventListener('hashchange', () => activateTab(readTabFromHash()));
+  activateTab(readTabFromHash());
+}
+
+initTabs();
 
 // Color palette — distinct, colorblind-friendly-ish
 const COLORS = ['#4af','#fa4','#4f4','#f4a','#a4f','#ff4','#4ff','#f44','#8f8','#f88'];
@@ -882,6 +937,7 @@ function applyFilters() {
 function renderAll() {
   const ph = document.getElementById('placeholder');
   if (state.selected.size > 0 && ph) ph.remove();
+  document.getElementById('tabnav').classList.toggle('visible', state.selected.size > 0);
   updateLegend();
   updateCompareHeader();
   computeSetupDiff();
