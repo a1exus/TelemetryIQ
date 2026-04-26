@@ -48,7 +48,7 @@ GT7 (UDP ~60 Hz) → TurismoClient (gt-telem, sync callbacks)
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; lap lifecycle; buffers frames and flushes to SQLite |
 | Repository | `rexy/repository.py` | SQLite access; schema DDL with `user_version` migration (currently v3) |
 | Live HUD | `rexy/static/index.html` | Vanilla JS; speed/gear/RPM, pedals, tires, lap timer; no charts (analysis is on /compare) |
-| Compare | `rexy/static/compare.html` | N-lap overlay; session browser; auto-diff banner; session notes; track/car filters; distance-based traces; delta graph; track map |
+| Compare | `rexy/static/compare.html` | Vanilla JS; three tabs (Driving Line / Inputs / Powertrain); N-lap overlay; session browser; auto-diff banner; session notes; track/car filters; distance-based traces; N-lap delta graph; track map; tab persisted in URL hash |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups from gran-turismo.com |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles shutdown (`sys.exit(0)` past gt-telem threads) |
 

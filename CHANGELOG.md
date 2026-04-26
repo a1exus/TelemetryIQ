@@ -6,6 +6,30 @@ Versioning uses [CalVer](https://calver.org/) (`YYYY.MM.DD`).
 
 ---
 
+## 2026.04.26 — Phase 7: GT7-Aligned Compare View
+
+### Changed
+
+- **Tabbed analysis dashboard**: `/compare` is now organised into three
+  tabs — Driving Line, Inputs, Powertrain — mirroring the structure of
+  GT7 Spec III's in-game Data Logger. Selected tab persists in the URL
+  hash. Tab 1 uses a 2-column layout on screens ≥1024px (track map left,
+  speed/delta right).
+
+### Added
+
+- Engine RPM trace in the Powertrain tab (always available; heartbeat A
+  field).
+
+### Fixed
+
+- `attachCrosshair()` no longer accumulates `mousemove` listeners on
+  every render; uses a per-canvas sentinel flag and self-checks the
+  active tab inside the handler so hidden charts cannot drift the
+  crosshair on visible ones.
+
+---
+
 ## 2026.04.08
 
 ### Changed
