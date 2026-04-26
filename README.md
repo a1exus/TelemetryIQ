@@ -1,5 +1,10 @@
 # TelemetryIQ
 
+[![CI](https://github.com/a1exus/TelemetryIQ/actions/workflows/test.yml/badge.svg)](https://github.com/a1exus/TelemetryIQ/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Status](https://img.shields.io/badge/status-feature--complete-success.svg)](CHANGELOG.md)
+
 > GT7 telemetry recorder + lap analysis. Live WebSocket HUD, SQLite per-lap
 > recording, MoTeC-style overlay, GT7 Data Logger-aligned UI.
 
