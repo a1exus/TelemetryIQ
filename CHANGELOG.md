@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning uses [CalVer](https://calver.org/) (`YYYY.MM.DD`).
 
+**Status:** Feature-complete as of `2026.04.26` — Phases 1–7 shipped. The
+project is in maintenance mode; new features require an explicit ask.
+
 ---
 
 ## 2026.04.26 — Phase 6: Per-Lap CSV Export

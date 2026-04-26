@@ -1,9 +1,16 @@
 # TelemetryIQ
 
-GT7 telemetry recorder and lap analysis tool. Gran Turismo 7 broadcasts UDP telemetry
-at ~60 Hz; TelemetryIQ records every frame per lap to SQLite, streams live data to a
-browser HUD, and enables lap-over-lap comparison of speed, throttle, brake, G-forces,
-and more.
+> GT7 telemetry recorder + lap analysis. Live WebSocket HUD, SQLite per-lap
+> recording, MoTeC-style overlay, GT7 Data Logger-aligned UI.
+
+Gran Turismo 7 broadcasts UDP telemetry at ~60 Hz; TelemetryIQ records every
+frame per lap to SQLite, streams live data to a browser HUD, and enables
+lap-over-lap comparison of speed, throttle, brake, G-forces, and more.
+
+**Status:** Feature-complete — Phases 1–7 shipped (2026-04-26). See
+[CHANGELOG.md](CHANGELOG.md) for the per-phase history. Future work is
+maintenance: dependency bumps, doc refreshes, refreshing `cars.json` /
+`tracks.json` when GT7 adds content. New features require an explicit ask.
 
 ## Prerequisites
 

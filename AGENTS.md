@@ -5,7 +5,20 @@ applyTo: '**'
 
 # Agents
 
-This file defines the custom agents available for use in this workspace.
+This file defines the custom agents available for use in this workspace and
+documents the most common recurring maintenance task (refreshing the static
+car/track name lookups when GT7 adds new content).
+
+## Maintenance Status
+
+TelemetryIQ is **feature-complete as of 2026-04-26** (Phases 1–7 shipped).
+Default to maintenance work — dependency bumps, security fixes, doc cleanups,
+test repair, and refreshing the static lookup files below. New feature work
+requires an explicit user request.
+
+`specs.md` is the single durable design document. Do not create parallel
+design docs under `docs/superpowers/specs/` (that directory is intentionally
+removed).
 
 ## Explore
 
