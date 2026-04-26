@@ -129,9 +129,9 @@ Standard motorsport analysis set used in the overlay view:
 | Throttle | `throttle / 255 * 100` | % | |
 | Brake | `brake / 255 * 100` | % | |
 | Gear | `current_gear` | — | |
-| Lateral G | `g_lateral` | g | |
+| Lateral G | `sway` | m/s² | Heartbeat B only — lateral body acceleration; charted as the lateral-G channel |
 | Steering | `wheel_rotation_radians` | rad | Heartbeat B only |
-| Time delta | computed | s | Two-lap overlay only |
+| Time delta | computed | s | N-lap: one trace per non-baseline lap, vs the baseline lap |
 
 ### Derived Data
 
