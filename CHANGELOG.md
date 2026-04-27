@@ -9,6 +9,28 @@ project is in maintenance mode; new features require an explicit ask.
 
 ---
 
+## 2026.04.27 — Repo presentation polish
+
+### Added
+
+- **`CONTRIBUTING.md`** — dev setup, code style, PR expectations,
+  and the new-features-need-an-issue rule.
+- **`SECURITY.md`** — trusted-LAN threat model and a pointer to
+  GitHub Security Advisories for sensitive reports.
+- **README badges** — CI status, license, Python version,
+  feature-complete status.
+- **GitHub repo description** — short tagline matching the README's.
+
+### Changed
+
+- README opening tagline aligned with the GitHub description.
+- README components table now lists the `export.csv` endpoint added in
+  Phase 6 (it was previously omitted from the listing only).
+- README gains short Contributing / Security / License sections that
+  point at the new files.
+
+---
+
 ## 2026.04.26 — Phase 6: Per-Lap CSV Export
 
 ### Added

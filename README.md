@@ -151,8 +151,23 @@ PlayStation (GT7, ~60 Hz UDP)
 | Dispatcher | `rexy/dispatcher.py` | Drains raw_queue; drop-oldest into ws_queue; calls `LapRecorder.on_frame()` |
 | Lap recorder | `rexy/recorder.py` | Session lifecycle; buffers frames; flushes to SQLite on lap change |
 | Repository | `rexy/repository.py` | All SQLite reads and writes; schema migrations via `user_version` |
-| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `PATCH /sessions/{id}`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`; serves static files |
+| FastAPI server | `rexy/server.py` | WebSocket `/ws`; REST `/laps`, `/sessions`, `/sessions/{id}/laps`, `PATCH /sessions/{id}`, `/laps/{car_code}/{lap_number}/{lap_id}/frames`, `/laps/{car_code}/{lap_number}/{lap_id}/export.csv`; serves static files |
 | Live HUD | `rexy/static/index.html` | Vanilla JS; glanceable driving display |
 | Lap analysis | `rexy/static/compare.html` | Three tabs (Driving Line / Inputs / Powertrain) aligned with GT7's Data Logger; N-lap overlay; session browser; auto-diff banner; session notes; track/car filters; baseline reference; distance-based traces; N-lap delta graph; track map; tab persisted in URL hash |
 | Static data | `rexy/static/cars.json`, `tracks.json` | Car/track name lookups (559 cars, 106 tracks from gran-turismo.com) |
 | Entrypoint | `rexy/__main__.py` | Wires all components; handles clean shutdown |
+
+## Contributing
+
+Bug fixes, doc improvements, and `cars.json` / `tracks.json` refreshes are
+welcome. New features need an issue first — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+TelemetryIQ runs on a trusted LAN with no authentication. Don't expose it to
+the internet. See [SECURITY.md](SECURITY.md) for the threat model and how to
+report issues privately.
+
+## License
+
+[MIT](LICENSE) © alexus.

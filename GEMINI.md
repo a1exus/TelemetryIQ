@@ -65,7 +65,9 @@ PlayStation (GT7, ~60Hz UDP)
 - `specs.md`: Authoritative source for requirements, architecture, and telemetry fields.
 - `plan.md`: High-level roadmap and phase definitions.
 - `tasks/`: Individual task files per phase (e.g., `01-*.md`, `02-*.md`, `03-*.md`).
-- `docs/superpowers/`: Detailed phase designs, deep-dive specs, and architectural decisions.
+- `docs/superpowers/plans/`: Historical implementation plans. Note: `docs/superpowers/specs/` was intentionally removed — `specs.md` is the single durable design document.
+- `CONTRIBUTING.md`: Dev setup, code style, PR expectations.
+- `SECURITY.md`: Threat model (trusted LAN; no auth) and vulnerability-reporting policy.
 
 ## Configuration (.env)
 

@@ -20,6 +20,11 @@ requires an explicit user request.
 design docs under `docs/superpowers/specs/` (that directory is intentionally
 removed).
 
+Outside-contributor expectations live in `CONTRIBUTING.md`; the threat model
+and vulnerability-reporting policy live in `SECURITY.md`. When agent work
+touches user-facing behaviour, check whether either of those files needs an
+update too.
+
 ## Explore
 
 **Description**: Fast read-only codebase exploration and Q&A subagent. Prefer over manually chaining multiple search and file-reading operations to avoid cluttering the main conversation. Safe to call in parallel. Specify thoroughness: quick, medium, or thorough.
